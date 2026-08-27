@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import datetime
 import streamlit as st
@@ -21,7 +22,7 @@ st.set_page_config(
 
 # Allowed Instructor Emails (loaded purely from environment variable INSTRUCTOR_EMAILS)
 RAW_INSTRUCTOR_EMAILS = os.getenv("INSTRUCTOR_EMAILS", "")
-INSTRUCTOR_EMAILS = [e.strip().lower() for e in RAW_INSTRUCTOR_EMAILS.split(",") if e.strip()]
+INSTRUCTOR_EMAILS = [e.strip().lower() for e in re.split(r'[,;|\s]+', RAW_INSTRUCTOR_EMAILS) if e.strip()]
 
 # Custom CSS Styling
 st.markdown("""
@@ -164,41 +165,6 @@ with st.sidebar:
         nav_options.insert(1, "📊 Instructor Gradebook")
         
     app_mode = st.radio("Navigation", nav_options, index=0)
-    
-    st.divider()
-    
-    # Model Configuration
-    st.subheader("Judge Models Configuration")
-    env_key = os.getenv("GEMINI_API_KEY", "")
-    api_key_input = st.text_input(
-        "Gemini API Key",
-        value=env_key,
-        type="password",
-        help="Defaults to GEMINI_API_KEY from Secret Manager or environment."
-    )
-    
-    col_m1, col_m2 = st.columns(2)
-    with col_m1:
-        primary_model = st.text_input(
-            "Level 1 Model",
-            value=os.getenv("PRIMARY_MODEL", "gemini-3.5-flash-lite"),
-            help="First level preliminary critique model."
-        )
-    with col_m2:
-        final_model = st.text_input(
-            "Final Evaluator",
-            value=os.getenv("META_MODEL", "gemini-3.7-flash"),
-            help="Final arbitration and synthesis model."
-        )
-        
-    enable_dual = st.checkbox(
-        "Enable 2-Level Evaluation",
-        value=True,
-        help="Level 1 (gemini-3.5-flash-lite) generates initial review -> Level 2 (gemini-3.7-flash) cross-examines and finalizes the score."
-    )
-    
-    st.divider()
-    st.caption("🛡️ Protected with XML Tag Sanitization & Structural Guardrails.")
 
 
 # ==============================================================================
@@ -226,6 +192,7 @@ if app_mode == "📝 Submit & Grade Report":
                     <div class="history-card">
                         <strong>Attempt #{att.attempt_number}</strong> (Grade {att.letter_grade})<br>
                         <span style="font-size: 1.3rem; font-weight:700; color:#0284C7;">{att.total_score} / 100</span><br>
+                        <small style="color:#475569;"><strong>{att.report_type}</strong></small><br>
                         <small style="color:#64748B;">{att.timestamp}</small><br>
                         <small>Act: {att.actionability_score}/25 | Scope: {att.clarity_of_scope_score}/25<br>Evid: {att.evidence_and_attribution_score}/25 | Meth: {att.methodology_score}/25</small>
                     </div>
@@ -241,9 +208,29 @@ if app_mode == "📝 Submit & Grade Report":
     with col2:
         report_title = st.text_input(
             "Report Title (Optional)",
-            placeholder="e.g. Threat Advisory: Ransomware Campaign Targeting FinTech",
+            placeholder="e.g. Singapore Cyber Threat Landscape 2026",
             help="If left blank, will be extracted from your report content."
         )
+
+    # 2. Report Type Selector to Calibrate Rubric (3 Types)
+    report_type_options = [
+        "1) 🕵️ Threat Actor Deep Dive Report (Actor TTPs, Campaigns & Infrastructure)",
+        "2) 🌐 Country Threat Landscape (National / Regional Geopolitical Macro-Overview)",
+        "3) 🛡️ CVE Strategic Reporting (Vulnerability Impact, Risk & Strategic Mitigations)"
+    ]
+    selected_type_raw = st.selectbox(
+        "Select Report Type *",
+        report_type_options,
+        index=0,
+        help="Calibrates the evaluation rubric to the report type. For example, a Country Threat Landscape is evaluated on executive strategy and does not require atomic IoCs or YARA rules."
+    )
+    
+    if "Threat Actor" in selected_type_raw:
+        report_type_clean = "Threat Actor Deep Dive Report"
+    elif "Country" in selected_type_raw:
+        report_type_clean = "Country Threat Landscape"
+    else:
+        report_type_clean = "CVE Strategic Reporting"
 
     st.info("📌 **Accepted Formats:** PDF (`.pdf`), Markdown (`.md`), or Plain Text (`.txt`). *(Word `.docx` is not accepted)*")
     
@@ -287,31 +274,25 @@ if app_mode == "📝 Submit & Grade Report":
             st.caption(f"Total Characters: {len(report_content):,} | Words: ~{len(report_content.split()):,}")
 
     st.write("")
-    btn_label = f"🚀 Score & Critique Attempt #{next_attempt_num} (Level 1: {primary_model} ➔ Final: {final_model})" if enable_dual else f"🚀 Score & Critique Attempt #{next_attempt_num}"
+    btn_label = f"🚀 Score & Critique Attempt #{next_attempt_num}"
     grade_button = st.button(btn_label, type="primary", use_container_width=True)
 
     if grade_button:
         if not report_content.strip():
             st.error("⚠️ Please upload a valid report file or paste report text to evaluate.")
-        elif not api_key_input:
-            st.error("⚠️ Gemini API Key is required. Please provide it in the sidebar or Secret Manager.")
         else:
             is_valid, validation_msg = validate_report_content(report_content)
             if not is_valid:
                 st.error(f"⚠️ Validation Error: {validation_msg}")
             else:
-                spinner_msg = f"🔍 Running 2-Level Review (Level 1: {primary_model} ➔ Final: {final_model})..." if enable_dual else "🔍 Senior CTI Analyst is evaluating the report..."
-                with st.spinner(spinner_msg):
+                with st.spinner("🔍 Senior CTI Analyst is evaluating the report against the calibrated criteria..."):
                     try:
-                        grader = CTIGrader(
-                            api_key=api_key_input,
-                            primary_model=primary_model.strip(),
-                            final_model=final_model.strip()
-                        )
+                        grader = CTIGrader()
                         stage_result: MultiStageGradingResult = grader.grade_report(
                             student_name=student_display_name.strip(),
                             report_text=report_content,
-                            dual_review=enable_dual
+                            selected_report_type=report_type_clean,
+                            dual_review=True
                         )
                         result: GradingResult = stage_result.final_result
                         result.student_email = st.session_state.user_email
@@ -328,6 +309,7 @@ if app_mode == "📝 Submit & Grade Report":
                             student_email=st.session_state.user_email,
                             attempt_number=attempt_num,
                             report_title=report_title.strip() if report_title.strip() else result.report_title,
+                            report_type=result.report_type if result.report_type else report_type_clean,
                             filename=file_name,
                             file_type=file_type,
                             report_content=report_content,
@@ -349,15 +331,16 @@ if app_mode == "📝 Submit & Grade Report":
                         st.session_state.current_stage_result = stage_result
                         st.session_state.current_submission_id = sub_id
                         st.session_state.current_attempt = attempt_num
-                        st.success(f"🎉 Complete! Saved report content & evaluation as **Attempt #{attempt_num}** (ID: `{sub_id}`)")
+                        st.success(f"🎉 Evaluation Complete! Saved as **Attempt #{attempt_num}** (ID: `{sub_id}`)")
                     except Exception as e:
                         st.error(f"❌ Grading Failed: {str(e)}")
 
-    # Display Grading Results Scorecard
+    # Display Grading Results Scorecard (No download buttons as requested)
     if st.session_state.current_result:
         res: GradingResult = st.session_state.current_result
         st.write("---")
         st.subheader(f"📊 Assessment Scorecard for {res.student_name} (Attempt #{st.session_state.current_attempt})")
+        st.caption(f"Evaluated as: **{res.report_type}** | Topic: *{res.report_title}*")
         
         # Score Delta Comparison
         if len(past_attempts) > 0:
@@ -380,15 +363,15 @@ if app_mode == "📝 Submit & Grade Report":
             """, unsafe_allow_html=True)
             
         with col_score2:
-            st.markdown("#### 🎯 Final Senior Analyst Critique")
+            st.markdown("#### 🎯 Senior Analyst Overall Critique")
             st.info(res.overall_critique)
 
         st.markdown("### 📋 4 Core Evaluation Criteria (0–25 Scale Each)")
         
         criteria_list = [
-            ("1. Actionability (Can security teams take direct defensive action?)", res.actionability),
-            ("2. Clarity of Scope (Are targeted sectors, regions, or systems clearly defined?)", res.clarity_of_scope),
-            ("3. Evidence and Attribution (Are claims backed by technical data/IoCs, or pure speculation?)", res.evidence_and_attribution),
+            ("1. Actionability (Can stakeholders/defenders take action?)", res.actionability),
+            ("2. Clarity of Scope (Are targeted sectors, regions, or systems defined?)", res.clarity_of_scope),
+            ("3. Evidence and Attribution (Are claims grounded in solid data/telemetry?)", res.evidence_and_attribution),
             ("4. Methodology (Does the report explain how data was gathered and analyzed?)", res.methodology),
         ]
         
@@ -423,51 +406,6 @@ if app_mode == "📝 Submit & Grade Report":
             </div>
             """, unsafe_allow_html=True)
 
-        # Export Section
-        st.write("---")
-        st.subheader("📥 Export Evaluation Report")
-        col_dl1, col_dl2 = st.columns(2)
-        
-        md_export = f"""# CTI Report Critique & Scorecard
-**Student:** {res.student_name} ({st.session_state.user_email})  
-**Attempt:** #{st.session_state.current_attempt}  
-**Report Title:** {res.report_title}  
-**Total Score:** {res.total_score}/100 (Grade {res.letter_grade})
-
-## Senior Analyst Overall Critique
-{res.overall_critique}
-
-## Category Breakdown (0-25 Scale)
-- **Actionability:** {res.actionability.score}/25  
-  {res.actionability.explanation}
-- **Clarity of Scope:** {res.clarity_of_scope.score}/25  
-  {res.clarity_of_scope.explanation}
-- **Evidence & Attribution:** {res.evidence_and_attribution.score}/25  
-  {res.evidence_and_attribution.explanation}
-- **Methodology:** {res.methodology.score}/25  
-  {res.methodology.explanation}
-
-## Gaps, Logical Fallacies & Missing Context
-""" + "\n".join([f"- {g}" for g in res.gaps_and_logical_fallacies]) + """
-
-## Three Questions for the Author
-""" + "\n".join([f"{idx}. {q}" for idx, q in enumerate(res.questions_for_author, 1)])
-        
-        with col_dl1:
-            st.download_button(
-                "📥 Download Markdown Report (.md)",
-                data=md_export,
-                file_name=f"critique_{st.session_state.user_email.split('@')[0]}_attempt{st.session_state.current_attempt}.md",
-                mime="text/markdown"
-            )
-        with col_dl2:
-            st.download_button(
-                "📥 Download JSON Data (.json)",
-                data=res.model_dump_json(indent=2),
-                file_name=f"critique_{st.session_state.user_email.split('@')[0]}_attempt{st.session_state.current_attempt}.json",
-                mime="application/json"
-            )
-
 
 # ==============================================================================
 # TAB 2: INSTRUCTOR GRADEBOOK (Strictly Restricted to Authorized Instructors)
@@ -493,19 +431,10 @@ elif app_mode == "📊 Instructor Gradebook" and is_instructor:
         st.subheader("📋 Submissions Log (All Attempts)")
         st.dataframe(df, use_container_width=True)
         
-        csv_data = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            "📥 Export Complete Gradebook (CSV)",
-            data=csv_data,
-            file_name=f"cti_gradebook_{datetime.date.today()}.csv",
-            mime="text/csv",
-            type="primary"
-        )
-        
         st.write("---")
         st.subheader("🔍 Inspect Student Submission & Uploaded Report")
         submission_options = {
-            f"{s.student_name} ({s.student_email}) | Attempt #{s.attempt_number} - {s.total_score}/100 ({s.letter_grade}) - {s.timestamp}": s 
+            f"{s.student_name} ({s.student_email}) | Attempt #{s.attempt_number} [{s.report_type}] - {s.total_score}/100 ({s.letter_grade}) - {s.timestamp}": s 
             for s in all_submissions
         }
         chosen_key = st.selectbox("Select a submission record to inspect:", list(submission_options.keys()))
@@ -513,24 +442,18 @@ elif app_mode == "📊 Instructor Gradebook" and is_instructor:
         if chosen_key:
             selected_sub = submission_options[chosen_key]
             st.markdown(f"### Submission: **{selected_sub.student_name}** (`{selected_sub.student_email}`) — Attempt #{selected_sub.attempt_number}")
-            st.write(f"**Report Title:** {selected_sub.report_title} | **File:** `{selected_sub.filename or 'Direct Paste'}` | **Submitted At:** {selected_sub.timestamp}")
+            st.write(f"**Report Title:** {selected_sub.report_title} | **Type:** `{selected_sub.report_type}` | **File:** `{selected_sub.filename or 'Direct Paste'}` | **Submitted At:** {selected_sub.timestamp}")
             st.write(f"**Score:** {selected_sub.total_score}/100 (Grade {selected_sub.letter_grade})")
 
             insp_tab1, insp_tab2, insp_tab3 = st.tabs([
                 "📄 Uploaded Report Content",
-                f"🏆 Final Evaluation ({selected_sub.final_model_used})",
-                f"📝 Level 1 Evaluation ({selected_sub.primary_model_used})"
+                "🏆 Final Evaluation Scorecard",
+                "📝 Level 1 Preliminary Review"
             ])
 
             with insp_tab1:
                 st.markdown("**Original Uploaded / Submitted Text:**")
                 st.markdown(f'<div class="report-preview-box">{selected_sub.report_content}</div>', unsafe_allow_html=True)
-                st.download_button(
-                    "📥 Download Student's Original Report",
-                    data=selected_sub.report_content,
-                    file_name=f"report_{selected_sub.student_email.split('@')[0]}_attempt{selected_sub.attempt_number}.txt",
-                    mime="text/plain"
-                )
 
             with insp_tab2:
                 st.info(selected_sub.result.overall_critique)
@@ -565,38 +488,63 @@ elif app_mode == "📊 Instructor Gradebook" and is_instructor:
 # ==============================================================================
 elif app_mode == "📖 Rubric Reference":
     st.markdown('<div class="main-title">📖 Senior CTI Analyst Grading Rubric (0–25 Scale, 100 Max)</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Standardized 4-pillar evaluation criteria used by the Gemini Assessor (0–25 points each).</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Evaluation criteria dynamically calibrated by report category.</div>', unsafe_allow_html=True)
     
     st.markdown("""
-    ### 1. Actionability (0 to 25 Points)
-    *Can security teams take direct defensive action based on this?*
-    - **17 - 25 (Outstanding):** Direct, immediate defensive actions: detection engineering rules (Sigma/YARA/Snort), explicit firewall blocklists, patching priority matrix ready for SOC execution.
-    - **8 - 16 (Acceptable):** General recommendations provided, but lacks concrete configuration parameters or rule syntax.
-    - **0 - 7 (Poor):** Zero actionable guidance; vague slogans like "stay vigilant" or "keep software updated".
-
-    ### 2. Clarity of Scope (0 to 25 Points)
-    *Are the targeted sectors, regions, or systems clearly defined?*
-    - **17 - 25 (Outstanding):** Granular victimology (industry vertical, geo-region, specific software versions, affected network protocols).
-    - **8 - 16 (Acceptable):** Broad sector named (e.g. "Healthcare") without technical versions or attack surface details.
-    - **0 - 7 (Poor):** Unbounded claims ("everyone on the internet is vulnerable").
-
-    ### 3. Evidence and Attribution (0 to 25 Points)
-    *Are claims backed by solid technical data, logs, or IoCs, or is it pure speculation?*
-    - **17 - 25 (Outstanding):** Verified SHA256 hashes, C2 telemetry, CVE IDs, MITRE ATT&CK technique IDs, and explicit confidence level ratings.
-    - **8 - 16 (Acceptable):** Adversary named with some IoCs, but missing verification sources or confidence calibration.
-    - **0 - 7 (Poor):** Speculation and conspiracy with zero technical indicators or logs.
-
-    ### 4. Methodology (0 to 25 Points)
-    *Does the report explain how the data was gathered and analyzed?*
-    - **17 - 25 (Outstanding):** Transparent analytic workflow (e.g. honeypot logs, dark web monitoring, reverse engineering sandbox analysis).
-    - **8 - 16 (Acceptable):** High-level data source mentioned without methodology explanation.
-    - **0 - 7 (Poor):** No explanation of where the intelligence originated.
+    ### 🕵️ 1. Threat Actor Deep Dive Report
+    *Comprehensive profiling of a specific threat actor, APT cluster, or cybercrime syndicate.*
+    - **Clarity of Scope (0–25):** 
+      - *Identity & Alias Hygiene:* Primary designation stated, vendor aliases mapped, naming conflicts acknowledged, cluster boundaries defined. *(Undifferentiated alias soup = max 5/25)*.
+      - *Victimology & Targeting Logic:* Granular sectors, geographies, organization profile, time-bounded, and reasoning for what drives target selection. *(Sector list with no reasoning = max 7/25)*.
+    - **Evidence & Attribution (0–25):** 
+      - *Attribution Basis:* Visible evidence chain (technical, infrastructure, temporal, linguistic). Stated confidence must be justified. *(State-sponsorship asserted without evidence chain = hard cap at 8/25)*.
+      - *Infrastructure & Tooling:* Malware families, loaders, C2 patterns, hosting/registration habits, distinguishing bespoke from commodity tooling.
+    - **Methodology (0–25):** 
+      - *TTP Depth & ATT&CK Mapping:* Technique-level with sub-techniques tied to specific observed campaigns; full lifecycle from initial access to impact. *(Tactic names only = max 5/25)*.
+      - *Analytic Tradecraft:* Diamond Model / Kill Chain analysis, intelligence sourcing, BLUF, and non-repetitive structure.
+    - **Actionability (0–25):** 
+      - *Detection & Hunting Value:* Behavioral detection opportunities and named log sources/telemetry (Sysmon, Zeek, Windows Event IDs). *(IOC list / hash dump alone = max 5/25)*.
+      - *Forecast & Defensive Posture:* Where the actor is heading and proactive hardening guidance.
 
     ---
-    ### Total Score & Grade Scale
-    - **90 – 100:** Grade A (Production-ready CTI advisory)
-    - **80 – 89:** Grade B (Solid professional report with minor gaps)
-    - **70 – 79:** Grade C (Acceptable student submission, missing key technical details)
-    - **60 – 69:** Grade D (Substandard)
-    - **Below 60:** Grade F (Inadequate or failed submission)
+
+    ### 🌐 2. Country Threat Landscape
+    *Macro overview of the cyber threat environment facing a nation or region (e.g. Singapore Cyber Threat Landscape).*
+    - **Clarity of Scope (0–25):** 
+      - *Scope & Framing:* Country, time window, sectors in/out of scope, clearly separates "threats to" vs "threats from".
+      - *Geopolitical & Regulatory Context:* Why this country, why now; relevant regulation or policy shaping the threat or response. *(Generic geopolitical commentary = max 5/25)*.
+    - **Evidence & Attribution (0–25):** 
+      - *Sector Targeting Evidence:* Grounded in actual in-country incidents or telemetry, not inferred from the country's economic profile/GDP.
+      - *Actor Coverage Balance:* State-nexus, cybercrime, and hacktivism proportionate to in-country reality, not imported from global reputation.
+    - **Methodology (0–25):** 
+      - *Analytic Rigour:* ICD 203 estimative probability language, confidence tied to sourcing, alternative explanations considered, zero nation-state hype.
+      - *Data & Trend Validity:* Baseline/prior-period comparisons, stated denominators, local vs global dataset distinction.
+    - **Actionability (0–25):** 
+      - *So-What & Recommendations:* Actionable for defenders operating specifically in that national jurisdiction.
+      - *(Note: Atomic IoCs and low-level YARA/Sigma rules are **NOT** expected or required).*
+
+    ---
+
+    ### 🛡️ 3. CVE Strategic Reporting
+    *Strategic and technical assessment of a critical vulnerability or emerging exploitation trend.*
+    - **Actionability (0–25):** 
+      - *Decision Framing:* Opens with the concrete decision being asked for (Emergency patch / Scheduled patch / Accept risk / Monitor). *(Opening with technical details instead of the decision = max 5/25)*.
+      - *Remediation Path & Tradeoffs:* Realistic patch timeline, downtime/compatibility costs, interim compensating controls, named owner. *("Apply vendor patch" alone without tradeoffs = max 5/25)*.
+    - **Clarity of Scope (0–25):** 
+      - *Exposure Assessment:* Do we run it, where, how many instances, internet-facing? *(Silence on exposure = max 5/25; honest "exposure unknown, here is how we find out" scores higher)*.
+      - *Business Impact Articulated:* Operational and financial consequences translated for executives. *(Raw CIA-triad jargon without translation = max 5/25)*.
+    - **Evidence & Attribution (0–25):** 
+      - *Prioritisation Rationale:* Why this CVE ahead of everything else (exploitation likelihood, CISA KEV status, EPSS score, asset criticality). *(CVSS severity score as sole argument = max 5/25)*.
+      - *Exploitation Status Precision:* Clearly separates Exploitable vs Public PoC vs Active In-The-Wild Exploitation with dated and sourced claims.
+    - **Methodology (0–25):** 
+      - *Technical Depth Calibration:* Calibrated for decision-makers (enough to be credible, no excess). *(Penalize raw technical exploit dump wearing a strategic label)*.
+      - *Analytic Synthesis:* Structured risk rationale, clear executive summary, coherent trade-off analysis.
+
+    ---
+    ### Grade Scale
+    - **90 – 100:** Grade A (Outstanding / Production Ready)
+    - **80 – 89:** Grade B (Solid professional report)
+    - **70 – 79:** Grade C (Acceptable, noticeable tradecraft gaps)
+    - **60 – 69:** Grade D (Substandard / hits multiple hard caps)
+    - **Below 60:** Grade F (Failed / Inadequate)
     """)

@@ -5,6 +5,14 @@
 
 set -euo pipefail
 
+# 1. Load variables from .env if present
+if [ -f .env ]; then
+  # Export non-comment lines
+  set -a
+  source .env
+  set +a
+fi
+
 SERVICE_NAME="${SERVICE_NAME:-cti-report-grader}"
 REGION="${REGION:-asia-southeast1}"
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || echo '')}"
@@ -27,6 +35,12 @@ echo "Final Evaluator      : ${META_MODEL}"
 echo "Instructor Emails    : ${INSTRUCTOR_EMAILS}"
 echo "======================================================"
 
+if [ -z "${PROJECT_ID}" ]; then
+  echo "❌ Error: Google Cloud Project ID is not set."
+  echo "Run: gcloud config set project <YOUR_PROJECT_ID>"
+  exit 1
+fi
+
 # Set active project
 echo "⚙️ Setting active gcloud project to ${PROJECT_ID}..."
 gcloud config set project "${PROJECT_ID}"
@@ -45,26 +59,27 @@ gcloud services enable \
 PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
 CLOUD_RUN_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
-# Load local GEMINI_API_KEY from .env if available
-if [ -z "${GEMINI_API_KEY:-}" ] && [ -f .env ]; then
-  export $(grep -E '^GEMINI_API_KEY=' .env | xargs || true)
-fi
-
 # Manage Secret Manager for GEMINI_API_KEY
-echo "🔒 Checking Google Secret Manager for '${SECRET_NAME}'..."
+echo "🔒 Synchronizing Google Secret Manager for '${SECRET_NAME}'..."
 if ! gcloud secrets describe "${SECRET_NAME}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
   if [ -n "${GEMINI_API_KEY:-}" ]; then
     echo "Creating new secret '${SECRET_NAME}' in Secret Manager..."
-    echo -n "${GEMINI_API_KEY}" | gcloud secrets create "${SECRET_NAME}" \
+    echo -n "${GEMINI_API_KEY}" | tr -d '\r\n' | gcloud secrets create "${SECRET_NAME}" \
       --data-file=- \
       --replication-policy="automatic" \
       --project="${PROJECT_ID}"
   else
     echo "⚠️ Warning: Secret '${SECRET_NAME}' not found in Secret Manager and GEMINI_API_KEY not in .env."
-    echo "Please create it using: echo -n 'YOUR_KEY' | gcloud secrets create ${SECRET_NAME} --data-file=-"
   fi
 else
-  echo "✅ Secret '${SECRET_NAME}' already exists in Secret Manager."
+  if [ -n "${GEMINI_API_KEY:-}" ]; then
+    echo "Updating secret '${SECRET_NAME}' with latest key from .env..."
+    echo -n "${GEMINI_API_KEY}" | tr -d '\r\n' | gcloud secrets versions add "${SECRET_NAME}" \
+      --data-file=- \
+      --project="${PROJECT_ID}"
+  else
+    echo "✅ Secret '${SECRET_NAME}' already exists in Secret Manager."
+  fi
 fi
 
 # Grant Cloud Run service account access to Secret Manager
@@ -92,7 +107,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --port=8080 \
   --memory=1Gi \
   --cpu=1 \
-  --set-env-vars="GOOGLE_CLOUD_PROJECT=${PROJECT_ID},FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION},PRIMARY_MODEL=${PRIMARY_MODEL},META_MODEL=${META_MODEL},INSTRUCTOR_EMAILS=${INSTRUCTOR_EMAILS}" \
+  --set-env-vars="^##^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}##FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION}##PRIMARY_MODEL=${PRIMARY_MODEL}##META_MODEL=${META_MODEL}##INSTRUCTOR_EMAILS=${INSTRUCTOR_EMAILS}" \
   --set-secrets="GEMINI_API_KEY=${SECRET_NAME}:latest"
 
 echo "======================================================"

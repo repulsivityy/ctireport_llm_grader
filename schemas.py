@@ -7,7 +7,7 @@ class CriterionScore(BaseModel):
         ...,
         ge=0,
         le=25,
-        description="Score from 0 (Unacceptable / Missing) to 25 (Outstanding / Production Ready)."
+        description="Score from 0 to 25 based on rubric calibrated to the report type."
     )
     explanation: str = Field(
         ...,
@@ -28,21 +28,25 @@ class GradingResult(BaseModel):
         default="Threat Intelligence Report",
         description="Title or primary subject of the threat intelligence report."
     )
+    report_type: str = Field(
+        default="Country Threat Landscape",
+        description="Type of CTI report: 'Threat Actor Deep Dive Report', 'Country Threat Landscape', or 'CVE Strategic Reporting'."
+    )
     actionability: CriterionScore = Field(
         ...,
-        description="Actionability (0-25): Can security teams take direct defensive action based on this?"
+        description="Actionability (0-25): Can stakeholders/security teams take direct action based on the report type?"
     )
     clarity_of_scope: CriterionScore = Field(
         ...,
-        description="Clarity of Scope (0-25): Are the targeted sectors, regions, or systems clearly defined?"
+        description="Clarity of Scope (0-25): Are target sectors, countries/regions, or systems clearly defined?"
     )
     evidence_and_attribution: CriterionScore = Field(
         ...,
-        description="Evidence and Attribution (0-25): Are claims backed by solid technical data, logs, or IoCs, or is it pure speculation?"
+        description="Evidence and Attribution (0-25): Are claims backed by solid data/telemetry calibrated to report type?"
     )
     methodology: CriterionScore = Field(
         ...,
-        description="Methodology (0-25): Does the report explain how the data was gathered and analyzed?"
+        description="Methodology (0-25): Does the report explain how intelligence was gathered and analyzed?"
     )
     total_score: int = Field(
         ...,
@@ -88,6 +92,7 @@ class SubmissionRecord(BaseModel):
     student_email: str
     attempt_number: int
     report_title: str
+    report_type: str
     filename: Optional[str] = None
     file_type: str
     report_content: str = Field(

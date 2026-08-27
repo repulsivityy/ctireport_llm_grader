@@ -48,6 +48,7 @@ def _init_sqlite_db(db_path: str = SQLITE_DB_PATH):
                 student_email_lower TEXT NOT NULL,
                 attempt_number INTEGER NOT NULL,
                 report_title TEXT NOT NULL,
+                report_type TEXT NOT NULL,
                 filename TEXT,
                 file_type TEXT NOT NULL,
                 report_content TEXT NOT NULL,
@@ -104,6 +105,7 @@ def save_submission(record: SubmissionRecord) -> None:
         "student_email_lower": record.student_email.strip().lower(),
         "attempt_number": record.attempt_number,
         "report_title": record.report_title,
+        "report_type": record.report_type,
         "filename": record.filename,
         "file_type": record.file_type,
         "report_content": record.report_content,
@@ -135,12 +137,12 @@ def save_submission(record: SubmissionRecord) -> None:
         cursor.execute("""
             INSERT OR REPLACE INTO submissions (
                 submission_id, timestamp, student_name, student_email, student_email_lower,
-                attempt_number, report_title, filename, file_type, report_content,
+                attempt_number, report_title, report_type, filename, file_type, report_content,
                 total_score, percentage_score, letter_grade,
                 actionability_score, clarity_of_scope_score,
                 evidence_and_attribution_score, methodology_score,
                 primary_model_used, final_model_used, level_1_json, result_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             record.submission_id,
             record.timestamp,
@@ -149,6 +151,7 @@ def save_submission(record: SubmissionRecord) -> None:
             doc_data["student_email_lower"],
             record.attempt_number,
             record.report_title,
+            record.report_type,
             record.filename,
             record.file_type,
             record.report_content,
@@ -183,6 +186,7 @@ def _row_to_record(d: dict) -> SubmissionRecord:
         student_email=d.get("student_email", ""),
         attempt_number=d.get("attempt_number", 1),
         report_title=d["report_title"],
+        report_type=d.get("report_type", "Strategic Threat Landscape"),
         filename=d.get("filename"),
         file_type=d["file_type"],
         report_content=d.get("report_content", ""),
@@ -272,6 +276,7 @@ def get_submissions_dataframe() -> pd.DataFrame:
             "Attempt #": r.attempt_number,
             "Total Score (100)": r.total_score,
             "Grade": r.letter_grade,
+            "Report Type": r.report_type,
             "Actionability (25)": r.actionability_score,
             "Scope (25)": r.clarity_of_scope_score,
             "Evidence (25)": r.evidence_and_attribution_score,
