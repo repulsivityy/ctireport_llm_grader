@@ -14,3 +14,10 @@ venv/
 submissions.db
 .pytest_cache/
 .vscode/
+
+# Teaching material / dev tooling - not part of the app
+sample_reports/
+tests/
+smoke_grader.py
+deploy.sh
+README.md

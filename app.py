@@ -1,5 +1,6 @@
 import os
 import re
+import html
 import uuid
 import datetime
 import streamlit as st
@@ -8,8 +9,9 @@ from dotenv import load_dotenv
 
 from schemas import GradingResult, MultiStageGradingResult, SubmissionRecord
 from parser import extract_text_from_bytes, validate_report_content, sanitize_report_text, DocumentParsingError
-from grader import CTIGrader
+from grader import CTIGrader, EvaluationUnavailable
 import storage
+import auth
 
 load_dotenv()
 
@@ -52,15 +54,6 @@ st.markdown("""
         font-weight: 800;
         color: #38BDF8;
         line-height: 1;
-    }
-    .grade-badge {
-        font-size: 1.5rem;
-        font-weight: 700;
-        padding: 0.2rem 1rem;
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.15);
-        display: inline-block;
-        margin-top: 0.5rem;
     }
     .rubric-box {
         background-color: #F8FAFC;
@@ -126,12 +119,25 @@ def init_session_state():
 
 init_session_state()
 
-# Auto-detect Cloud IAP identity if deployed behind Google Identity-Aware Proxy
-if hasattr(st, "experimental_user") and getattr(st.experimental_user, "is_logged_in", False):
-    st.session_state.user_email = st.experimental_user.email.strip().lower()
+# Identity is taken ONLY from a trusted source (IAP / OIDC) - never a form field -
+# so a student cannot unlock the instructor gradebook by typing another address.
+authenticated_email = auth.get_authenticated_email()
+DEV_AUTH = auth.allow_insecure_local_auth()
 
-# Check if current user email is Instructor
-is_instructor = st.session_state.user_email.strip().lower() in INSTRUCTOR_EMAILS
+if authenticated_email:
+    if st.session_state.user_email != authenticated_email:
+        st.session_state.user_email = authenticated_email
+        st.session_state.current_result = None
+elif not DEV_AUTH:
+    st.error(
+        "🔒 **Sign-in required.** This application must be reached through the "
+        "authenticated course portal. If you navigated here directly, go back to "
+        "the course link and sign in with your institutional Google account."
+    )
+    st.stop()
+
+# Instructor status derives from the verified address only.
+is_instructor = bool(st.session_state.user_email) and st.session_state.user_email in INSTRUCTOR_EMAILS
 
 # Sidebar Navigation
 with st.sidebar:
@@ -139,16 +145,21 @@ with st.sidebar:
     st.title("CTI Grader Control")
     
     st.subheader("👤 User Identity")
-    email_input = st.text_input(
-        "Your Email Address *",
-        value=st.session_state.user_email,
-        placeholder="e.g. student@domain.com",
-        help="Used to track your submissions and revision history. No sign-up required."
-    )
-    if email_input.strip().lower() != st.session_state.user_email:
-        st.session_state.user_email = email_input.strip().lower()
-        st.session_state.current_result = None
-        st.rerun()
+    if authenticated_email:
+        st.caption("Verified identity (secure sign-in)")
+        st.code(authenticated_email, language=None)
+    elif DEV_AUTH:
+        st.warning("⚠️ Insecure local-auth mode: identity is self-declared. Do not enable in production.")
+        email_input = st.text_input(
+            "Your Email Address *",
+            value=st.session_state.user_email,
+            placeholder="e.g. student@domain.com",
+            help="Local development only. In production, identity comes from IAP sign-in."
+        )
+        if email_input.strip().lower() != st.session_state.user_email:
+            st.session_state.user_email = email_input.strip().lower()
+            st.session_state.current_result = None
+            st.rerun()
 
     # Role badge
     if st.session_state.user_email:
@@ -175,12 +186,15 @@ if app_mode == "📝 Submit & Grade Report":
     st.markdown('<div class="sub-title">Submit your CTI report to be evaluated on a 100-point scale (4 criteria × 25 pts each). Revisions are tracked automatically by your email.</div>', unsafe_allow_html=True)
 
     if not st.session_state.user_email:
-        st.warning("👈 Please enter your **Email Address** in the sidebar to start submitting reports.")
+        st.warning("👈 Enter your email in the sidebar (local dev) or sign in to start submitting reports.")
         st.stop()
+
+    if st.session_state.get("_flash"):
+        st.success(st.session_state.pop("_flash"))
 
     past_attempts = storage.get_student_submissions(st.session_state.user_email)
     next_attempt_num = len(past_attempts) + 1
-    
+
     # Display Past Attempts Summary
     if past_attempts:
         with st.expander(f"📜 Your Submission History for {st.session_state.user_email} ({len(past_attempts)} previous attempt{'s' if len(past_attempts)>1 else ''})", expanded=True):
@@ -190,11 +204,11 @@ if app_mode == "📝 Submit & Grade Report":
                 with col_target:
                     st.markdown(f"""
                     <div class="history-card">
-                        <strong>Attempt #{att.attempt_number}</strong> (Grade {att.letter_grade})<br>
+                        <strong>Attempt #{att.attempt_number}</strong><br>
                         <span style="font-size: 1.3rem; font-weight:700; color:#0284C7;">{att.total_score} / 100</span><br>
-                        <small style="color:#475569;"><strong>{att.report_type}</strong></small><br>
-                        <small style="color:#64748B;">{att.timestamp}</small><br>
-                        <small>Act: {att.actionability_score}/25 | Scope: {att.clarity_of_scope_score}/25<br>Evid: {att.evidence_and_attribution_score}/25 | Meth: {att.methodology_score}/25</small>
+                        <small style="color:#475569;"><strong>{html.escape(att.report_type)}</strong></small><br>
+                        <small style="color:#64748B;">{html.escape(att.timestamp)}</small><br>
+                        <small>Structure: {att.clarity_of_scope_score}/25 | Sourcing: {att.evidence_and_attribution_score}/25<br>Tradecraft: {att.methodology_score}/25 | Exec/Action: {att.actionability_score}/25</small>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -212,26 +226,12 @@ if app_mode == "📝 Submit & Grade Report":
             help="If left blank, will be extracted from your report content."
         )
 
-    # 2. Report Type Selector to Calibrate Rubric (3 Types)
-    report_type_options = [
-        "1) 🕵️ Threat Actor Deep Dive Report (Actor TTPs, Campaigns & Infrastructure)",
-        "2) 🌐 Country Threat Landscape (National / Regional Geopolitical Macro-Overview)",
-        "3) 🛡️ CVE Strategic Reporting (Vulnerability Impact, Risk & Strategic Mitigations)"
-    ]
-    selected_type_raw = st.selectbox(
-        "Select Report Type *",
-        report_type_options,
-        index=0,
-        help="Calibrates the evaluation rubric to the report type. For example, a Country Threat Landscape is evaluated on executive strategy and does not require atomic IoCs or YARA rules."
+    st.info(
+        "📌 **All submissions are graded as an executive CTI report** (audience: executives / "
+        "upper management). The subject is up to you — threat landscape, vulnerability assessment, "
+        "threat actor profile, incident retrospective — and the grader adapts the expected section "
+        "structure to your subject. See **📖 Rubric Reference** for what is scored."
     )
-    
-    if "Threat Actor" in selected_type_raw:
-        report_type_clean = "Threat Actor Deep Dive Report"
-    elif "Country" in selected_type_raw:
-        report_type_clean = "Country Threat Landscape"
-    else:
-        report_type_clean = "CVE Strategic Reporting"
-
     st.info("📌 **Accepted Formats:** PDF (`.pdf`), Markdown (`.md`), or Plain Text (`.txt`). *(Word `.docx` is not accepted)*")
     
     input_tab1, input_tab2 = st.tabs(["📁 Upload File (.pdf, .md, .txt)", "✍️ Paste Report Text Directly"])
@@ -274,10 +274,24 @@ if app_mode == "📝 Submit & Grade Report":
             st.caption(f"Total Characters: {len(report_content):,} | Words: ~{len(report_content.split()):,}")
 
     st.write("")
-    btn_label = f"🚀 Score & Critique Attempt #{next_attempt_num}"
-    grade_button = st.button(btn_label, type="primary", use_container_width=True)
 
-    if grade_button:
+    # One submission per report version: the same text cannot be graded twice in a row.
+    # Editing the report (upload or paste) unlocks the button again.
+    _last = past_attempts[-1] if past_attempts else None
+    already_submitted = bool(_last and report_content.strip() and _last.report_content.strip() == report_content.strip())
+    grading_running = st.session_state.get("grading_in_progress", False)
+
+    btn_label = f"🚀 Score & Critique Attempt #{next_attempt_num}"
+    grade_button = st.button(
+        btn_label,
+        type="primary",
+        use_container_width=True,
+        disabled=already_submitted or grading_running,
+    )
+    if already_submitted:
+        st.caption(f"✅ This exact report was already graded as Attempt #{_last.attempt_number}. Revise it above to submit a new version.")
+
+    if grade_button and not already_submitted and not grading_running:
         if not report_content.strip():
             st.error("⚠️ Please upload a valid report file or paste report text to evaluate.")
         else:
@@ -285,23 +299,24 @@ if app_mode == "📝 Submit & Grade Report":
             if not is_valid:
                 st.error(f"⚠️ Validation Error: {validation_msg}")
             else:
-                with st.spinner("🔍 Senior CTI Analyst is evaluating the report against the calibrated criteria..."):
-                    try:
+                st.session_state.grading_in_progress = True
+                try:
+                    with st.spinner("🔍 Senior CTI Analyst is evaluating the report against the rubric..."):
                         grader = CTIGrader()
                         stage_result: MultiStageGradingResult = grader.grade_report(
                             student_name=student_display_name.strip(),
                             report_text=report_content,
-                            selected_report_type=report_type_clean,
-                            dual_review=True
+                            previous_attempt=_last,
+                            dual_review=True,
                         )
                         result: GradingResult = stage_result.final_result
                         result.student_email = st.session_state.user_email
                         if stage_result.level_1_result:
                             stage_result.level_1_result.student_email = st.session_state.user_email
-                        
+
                         attempt_num = storage.get_next_attempt_number(st.session_state.user_email)
                         sub_id = str(uuid.uuid4())[:8]
-                        
+
                         record = SubmissionRecord(
                             submission_id=sub_id,
                             timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -309,13 +324,12 @@ if app_mode == "📝 Submit & Grade Report":
                             student_email=st.session_state.user_email,
                             attempt_number=attempt_num,
                             report_title=report_title.strip() if report_title.strip() else result.report_title,
-                            report_type=result.report_type if result.report_type else report_type_clean,
+                            report_type=result.report_type if result.report_type else "General CTI Briefing",
                             filename=file_name,
                             file_type=file_type,
                             report_content=report_content,
                             total_score=result.total_score,
                             percentage_score=result.percentage_score,
-                            letter_grade=result.letter_grade,
                             actionability_score=result.actionability.score,
                             clarity_of_scope_score=result.clarity_of_scope.score,
                             evidence_and_attribution_score=result.evidence_and_attribution.score,
@@ -323,32 +337,48 @@ if app_mode == "📝 Submit & Grade Report":
                             primary_model_used=stage_result.primary_model_used,
                             final_model_used=stage_result.final_model_used,
                             level_1_result=stage_result.level_1_result,
-                            result=result
+                            result=result,
+                            integrity=stage_result.integrity,
                         )
                         storage.save_submission(record)
-                        
+
                         st.session_state.current_result = result
                         st.session_state.current_stage_result = stage_result
                         st.session_state.current_submission_id = sub_id
                         st.session_state.current_attempt = attempt_num
-                        st.success(f"🎉 Evaluation Complete! Saved as **Attempt #{attempt_num}** (ID: `{sub_id}`)")
-                    except Exception as e:
-                        st.error(f"❌ Grading Failed: {str(e)}")
+                        st.session_state._flash = f"🎉 Evaluation complete — saved as Attempt #{attempt_num} (ID: {sub_id})."
+                    st.session_state.grading_in_progress = False
+                    st.rerun()
+                except EvaluationUnavailable as e:
+                    st.session_state.grading_in_progress = False
+                    st.error(f"⏳ {e}")
+                except Exception as e:
+                    st.session_state.grading_in_progress = False
+                    st.error(f"❌ Grading failed: {e}")
 
     # Display Grading Results Scorecard (No download buttons as requested)
     if st.session_state.current_result:
         res: GradingResult = st.session_state.current_result
         st.write("---")
         st.subheader(f"📊 Assessment Scorecard for {res.student_name} (Attempt #{st.session_state.current_attempt})")
-        st.caption(f"Evaluated as: **{res.report_type}** | Topic: *{res.report_title}*")
-        
-        # Score Delta Comparison
-        if len(past_attempts) > 0:
-            last_att = past_attempts[-1]
-            diff_total = res.total_score - last_att.total_score
-            diff_str = f"+{diff_total}" if diff_total > 0 else f"{diff_total}"
+        st.caption(f"Detected report subject: **{res.report_type}** | Topic: *{res.report_title}*")
+
+        # Compare against the attempt before this one (past_attempts already includes the
+        # just-saved attempt after the post-grading rerun).
+        prior_atts = [a for a in past_attempts if a.attempt_number != st.session_state.current_attempt]
+        if prior_atts:
+            prev = prior_atts[-1]
+            diff_total = res.total_score - prev.total_score
+            diff_str = f"+{diff_total}" if diff_total > 0 else str(diff_total)
             delta_cls = "delta-badge-pos" if diff_total >= 0 else "delta-badge-neg"
-            st.markdown(f"📈 **Progression vs Attempt #{last_att.attempt_number}:** <span class='{delta_cls}'>{diff_str} points</span> ({last_att.total_score}/100 ➔ **{res.total_score}/100**)", unsafe_allow_html=True)
+            st.markdown(
+                f"📈 **vs Attempt #{prev.attempt_number}:** "
+                f"<span class='{delta_cls}'>{diff_str} points</span> "
+                f"({prev.total_score}/100 ➔ **{res.total_score}/100**)",
+                unsafe_allow_html=True,
+            )
+            if res.progress_note:
+                st.info(f"🔄 **What changed:** {res.progress_note}")
             st.write("")
 
         # Hero Scorecard
@@ -356,31 +386,33 @@ if app_mode == "📝 Submit & Grade Report":
         with col_score1:
             st.markdown(f"""
             <div class="score-card">
-                <div style="font-size: 1.05rem; opacity: 0.8; margin-bottom: 0.3rem;">TOTAL GRADE SCORE</div>
+                <div style="font-size: 1.05rem; opacity: 0.8; margin-bottom: 0.3rem;">TOTAL SCORE</div>
                 <div class="score-number">{res.total_score}<span style="font-size: 1.8rem; color: #94A3B8;">/100</span></div>
-                <div class="grade-badge">Grade {res.letter_grade}</div>
             </div>
             """, unsafe_allow_html=True)
-            
+
         with col_score2:
             st.markdown("#### 🎯 Senior Analyst Overall Critique")
             st.info(res.overall_critique)
 
-        st.markdown("### 📋 4 Core Evaluation Criteria (0–25 Scale Each)")
-        
+        if res.integrity_notice:
+            st.error(f"🛡️ **Evaluator-integrity note (learning point, not a separate penalty):** {res.integrity_notice}")
+
+        st.markdown("### 📋 4 Evaluation Pillars (0–25 Each)")
+
         criteria_list = [
-            ("1. Actionability (Can stakeholders/defenders take action?)", res.actionability),
-            ("2. Clarity of Scope (Are targeted sectors, regions, or systems defined?)", res.clarity_of_scope),
-            ("3. Evidence and Attribution (Are claims grounded in solid data/telemetry?)", res.evidence_and_attribution),
-            ("4. Methodology (Does the report explain how data was gathered and analyzed?)", res.methodology),
+            ("1. Structure, Scope & Completeness (BLUF, scope, subject-appropriate sections)", res.clarity_of_scope),
+            ("2. Evidence & Sourcing (every claim cited inline or via a numbered appendix)", res.evidence_and_attribution),
+            ("3. Analytic Tradecraft & Estimative Language (ICD 203 terms, confidence stated)", res.methodology),
+            ("4. Executive Communication & Actionability (written for leadership, decision-ready)", res.actionability),
         ]
-        
+
         for title, item in criteria_list:
             with st.container():
                 st.markdown(f"""
                 <div class="rubric-box">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span class="metric-title">{title}</span>
+                        <span class="metric-title">{html.escape(title)}</span>
                         <span style="font-size: 1.3rem; font-weight: 700; color: #0284C7;">{item.score} / 25</span>
                     </div>
                 </div>
@@ -389,20 +421,20 @@ if app_mode == "📝 Submit & Grade Report":
                 st.markdown(f"**Explanation:** {item.explanation}")
                 st.write("")
 
-        # Gaps & Logical Fallacies Section
-        st.markdown("### ⚠️ Gaps, Logical Fallacies & Missing Context")
-        if res.gaps_and_logical_fallacies:
-            for gap in res.gaps_and_logical_fallacies:
+        # Structural gaps & missing elements
+        st.markdown("### ⚠️ Gaps & Missing Elements")
+        if res.gaps_and_missing_elements:
+            for gap in res.gaps_and_missing_elements:
                 st.warning(f"• {gap}")
         else:
-            st.success("✅ No major gaps or logical fallacies detected in this report.")
+            st.success("✅ No major structural, sourcing, or tradecraft gaps detected.")
 
         # Three Questions for the Author
         st.markdown("### ❓ Three Questions to Ask the Report's Author")
         for i, q in enumerate(res.questions_for_author, 1):
             st.markdown(f"""
             <div class="author-question-box">
-                <strong>Question {i}:</strong> {q}
+                <strong>Question {i}:</strong> {html.escape(str(q))}
             </div>
             """, unsafe_allow_html=True)
 
@@ -434,101 +466,197 @@ elif app_mode == "📊 Instructor Gradebook" and is_instructor:
         st.write("---")
         st.subheader("🔍 Inspect Student Submission & Uploaded Report")
         submission_options = {
-            f"{s.student_name} ({s.student_email}) | Attempt #{s.attempt_number} [{s.report_type}] - {s.total_score}/100 ({s.letter_grade}) - {s.timestamp}": s 
+            f"{s.student_name} ({s.student_email}) | Attempt #{s.attempt_number} [{s.report_type}] - {s.total_score}/100 - {s.timestamp}": s
             for s in all_submissions
         }
         chosen_key = st.selectbox("Select a submission record to inspect:", list(submission_options.keys()))
-        
+
         if chosen_key:
             selected_sub = submission_options[chosen_key]
             st.markdown(f"### Submission: **{selected_sub.student_name}** (`{selected_sub.student_email}`) — Attempt #{selected_sub.attempt_number}")
-            st.write(f"**Report Title:** {selected_sub.report_title} | **Type:** `{selected_sub.report_type}` | **File:** `{selected_sub.filename or 'Direct Paste'}` | **Submitted At:** {selected_sub.timestamp}")
-            st.write(f"**Score:** {selected_sub.total_score}/100 (Grade {selected_sub.letter_grade})")
+            st.write(f"**Report Title:** {selected_sub.report_title} | **Subject:** `{selected_sub.report_type}` | **File:** `{selected_sub.filename or 'Direct Paste'}` | **Submitted At:** {selected_sub.timestamp}")
+            st.write(f"**Score:** {selected_sub.total_score}/100")
+            if selected_sub.result.evaluation_note:
+                st.warning(f"⚙️ Pipeline note: {selected_sub.result.evaluation_note}")
 
-            insp_tab1, insp_tab2, insp_tab3 = st.tabs([
+            _PILLAR_LABELS = [
+                ("clarity_of_scope", "Structure, Scope & Completeness"),
+                ("evidence_and_attribution", "Evidence & Sourcing"),
+                ("methodology", "Analytic Tradecraft & Estimative Language"),
+                ("actionability", "Executive Communication & Actionability"),
+            ]
+
+            insp_tab1, insp_tab2, insp_tab3, insp_tab4 = st.tabs([
                 "📄 Uploaded Report Content",
-                "🏆 Final Evaluation Scorecard",
-                "📝 Level 1 Preliminary Review"
+                "🏆 Tier 2 — Final Scorecard",
+                "📝 Tier 1 — Level 1 Review",
+                "🔀 Tier 1 vs Tier 2 + Integrity",
             ])
 
             with insp_tab1:
                 st.markdown("**Original Uploaded / Submitted Text:**")
-                st.markdown(f'<div class="report-preview-box">{selected_sub.report_content}</div>', unsafe_allow_html=True)
+                # Render as inert text (never as HTML) - report_content is untrusted student input.
+                st.text_area(
+                    "Original submitted text",
+                    value=selected_sub.report_content,
+                    height=450,
+                    disabled=True,
+                    label_visibility="collapsed",
+                )
+
+            def _render_final(gr):
+                st.info(gr.overall_critique)
+                if gr.progress_note:
+                    st.caption(f"Progress note shown to student: {gr.progress_note}")
+                for field, label in _PILLAR_LABELS:
+                    cs = getattr(gr, field)
+                    caps = f"  _(caps: {', '.join(cs.caps_applied)})_" if cs.caps_applied else ""
+                    st.write(f"- **{label} ({cs.score}/25):** {cs.explanation}{caps}")
+                if gr.integrity_notice:
+                    st.warning(f"Integrity note shown to student: {gr.integrity_notice}")
+                if gr.gaps_and_missing_elements:
+                    st.markdown("**Gaps & missing elements:**")
+                    for g in gr.gaps_and_missing_elements:
+                        st.write(f"- {g}")
+                if gr.questions_for_author:
+                    st.markdown("**Questions for author:**")
+                    for idx, q in enumerate(gr.questions_for_author, 1):
+                        st.write(f"{idx}. {q}")
+
+            def _render_level1(l1):
+                st.info(l1.overall_critique)
+                st.caption(f"Level 1 implied total: {l1.total_score}/100")
+                if l1.structure_checklist:
+                    st.markdown("**Structure checklist:**")
+                    for item in l1.structure_checklist:
+                        mark = "✅" if item.present else "❌"
+                        st.write(f"- {mark} **{item.element}** — {item.evidence or '—'}")
+                for field, label in _PILLAR_LABELS:
+                    cs = getattr(l1, field)
+                    caps = f"  _(caps: {', '.join(cs.caps_applied)})_" if cs.caps_applied else ""
+                    st.write(f"- **{label} ({cs.score}/25):** {cs.explanation}{caps}")
+                for heading, quotes in [
+                    ("Estimative-language quotes", l1.estimative_language_quotes),
+                    ("Vague-language quotes", l1.vague_language_quotes),
+                    ("Uncited-claim quotes", l1.uncited_claim_quotes),
+                ]:
+                    if quotes:
+                        st.markdown(f"**{heading}:**")
+                        for qt in quotes:
+                            st.write(f"> {qt}")
 
             with insp_tab2:
-                st.info(selected_sub.result.overall_critique)
-                st.write(f"- **Actionability ({selected_sub.actionability_score}/25):** {selected_sub.result.actionability.explanation}")
-                st.write(f"- **Clarity of Scope ({selected_sub.clarity_of_scope_score}/25):** {selected_sub.result.clarity_of_scope.explanation}")
-                st.write(f"- **Evidence & Attribution ({selected_sub.evidence_and_attribution_score}/25):** {selected_sub.result.evidence_and_attribution.explanation}")
-                st.write(f"- **Methodology ({selected_sub.methodology_score}/25):** {selected_sub.result.methodology.explanation}")
-                
-                if selected_sub.result.gaps_and_logical_fallacies:
-                    st.markdown("**Identified Gaps & Fallacies:**")
-                    for g in selected_sub.result.gaps_and_logical_fallacies:
-                        st.write(f"- {g}")
-                            
-                if selected_sub.result.questions_for_author:
-                    st.markdown("**3 Questions for Author:**")
-                    for idx, q in enumerate(selected_sub.result.questions_for_author, 1):
-                        st.write(f"{idx}. {q}")
+                _render_final(selected_sub.result)
 
             with insp_tab3:
                 if selected_sub.level_1_result:
-                    st.info(selected_sub.level_1_result.overall_critique)
-                    st.write(f"- **Actionability ({selected_sub.level_1_result.actionability.score}/25):** {selected_sub.level_1_result.actionability.explanation}")
-                    st.write(f"- **Clarity of Scope ({selected_sub.level_1_result.clarity_of_scope.score}/25):** {selected_sub.level_1_result.clarity_of_scope.explanation}")
-                    st.write(f"- **Evidence & Attribution ({selected_sub.level_1_result.evidence_and_attribution.score}/25):** {selected_sub.level_1_result.evidence_and_attribution.explanation}")
-                    st.write(f"- **Methodology ({selected_sub.level_1_result.methodology.score}/25):** {selected_sub.level_1_result.methodology.explanation}")
+                    _render_level1(selected_sub.level_1_result)
                 else:
-                    st.caption("No separate Level 1 preliminary evaluation recorded for this entry.")
+                    st.caption("No Level 1 assessment recorded for this entry.")
+
+            with insp_tab4:
+                l1 = selected_sub.level_1_result
+                if l1:
+                    rows = []
+                    for field, label in _PILLAR_LABELS:
+                        l1s = getattr(l1, field).score
+                        f2s = getattr(selected_sub.result, field).score
+                        rows.append({"Pillar": label, "Tier 1": l1s, "Tier 2 (final)": f2s, "Δ": f2s - l1s})
+                    rows.append({
+                        "Pillar": "TOTAL", "Tier 1": l1.total_score,
+                        "Tier 2 (final)": selected_sub.total_score,
+                        "Δ": selected_sub.total_score - l1.total_score,
+                    })
+                    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                else:
+                    st.caption("No Level 1 assessment to compare against.")
+
+                st.markdown("**Integrity / security review (Tier 2):**")
+                integ = selected_sub.integrity
+                if integ is None:
+                    st.caption("No integrity review recorded.")
+                elif not integ.manipulation_detected:
+                    st.success(f"No evaluator-manipulation content detected (severity: {integ.severity}).")
+                else:
+                    box = st.error if integ.severity == "high" else st.warning
+                    box(f"Manipulation detected — severity **{integ.severity}**. {integ.note}")
+                    for f in integ.findings:
+                        st.write(f"- _{f.technique}_: “{f.quote}”")
 
 
 # ==============================================================================
 # TAB 3: RUBRIC REFERENCE
 # ==============================================================================
 elif app_mode == "📖 Rubric Reference":
-    st.markdown('<div class="main-title">📖 Senior CTI Analyst Grading Rubric (0–25 Scale, 100 Max)</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Evaluation criteria dynamically calibrated by report category.</div>', unsafe_allow_html=True)
-    
-    st.markdown("""
-    ### 🏆 Gold Standard Threat Report Structure & Rubric
+    st.markdown('<div class="main-title">📖 Grading Rubric — Executive CTI Report</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">The grader scores completeness, structure, sourcing discipline and analytic tradecraft. It does <b>not</b> judge whether your factual claims are true.</div>', unsafe_allow_html=True)
 
-    Evaluations are grounded in a 4-section executive & operational benchmark:
+    st.markdown("""
+    ### 🎯 The brief
+
+    Every submission is treated as a **CTI report for executives and upper management**.
+    You choose the subject — threat landscape, vulnerability assessment, threat actor
+    profile, incident retrospective — and the grader adapts the *expected section
+    structure* to that subject.
+
+    ### 🏆 Gold-standard structure
 
     ```markdown
-    # 1. Executive Summary - (Bottom Line Up Front / BLUF)
-    - Time-bounded, sector-specific, baseline vs actual exposure, root cause stated.
-    - Example: "Between Q1 and Q2, our sector experienced a 40% increase in sophisticated spear-phishing and token-based session hijacking. While automated defenses blocked 99.8% of attempts, one targeted campaign successfully impersonated a C-suite executive to request unauthorized wire processing. Total financial impact was mitigated, but exposure highlighted a gap in human-layer verification culture."
+    # 1. Bottom Line Up Front (BLUF) / Executive Summary
+       - Core judgement in the first paragraph: the threat, how likely, how confident,
+         and the decision leadership is being asked to make.
+       - Time-bounded and scoped. Uses estimative + confidence language.
 
-    # 2. Key Risk Developments & Threat Drivers
-    - Concrete threat dynamics, specific attack vectors, grounded statistics.
-    - Example: AI-driven deepfake phishing, third-party vendor zero-days, dark web Initial Access Broker (IAB) insider recruitment trends.
+    # 2. Scope & Methodology
+       - What is covered and excluded; the reporting period.
+       - Sources and their reliability, collection approach, key assumptions,
+         known intelligence gaps.
 
-    # 3. Business Impact Analysis
-    - Direct translation of cyber threats into operational, financial, and regulatory/legal consequences for decision-makers.
-    - Example: Operational supply chain disruption risks, compliance disclosure obligations.
+    # 3. Body  (adapts to the subject)
+       - Threat landscape  -> what matters now, what changed, and an explicit
+         "what is next" / outlook section.
+       - Vulnerability assessment -> the vuln, our exposure, exploitation status,
+         and a dedicated Business Impact Assessment.
+       - Threat actor profile -> targeting logic, intent, and actionable TTPs.
+       - Every factual claim is cited: inline ("Bank A disclosed a breach -
+         www.example-news.com/...") or a numbered reference resolved in the appendix
+         ("Bank A disclosed a breach [3]").
 
-    # 4. Strategic Recommendations / Requested Actions
-    - Decision-ready, concrete technical/process interventions with named scope.
-    - Example: Budget approval for hardware-bound FIDO2 keys; mandatory out-of-band "Pause → Verify" approval workflows.
+    # 4. Business Impact
+       - Findings translated into operational, financial, and regulatory/legal terms.
+
+    # 5. Recommendations / Requested Decisions
+       - Prioritised, concrete, decision-ready (a budget ask, a policy call).
+
+    # 6. Appendix
+       - Numbered source list; technical detail (IOCs, rules, raw data) kept here.
     ```
 
+    ### 🗣️ Estimative probability & confidence (ICD 203)
+
+    Use standard **likelihood** terms — *almost no chance · very unlikely · unlikely ·
+    roughly even chance · likely · very likely · almost certain* — not "could / may /
+    might".
+
+    State a separate **confidence level** (*low / moderate / high*) based on how solid
+    your sourcing is, and keep it distinct from likelihood:
+    > "We assess it is **very likely** (**high confidence**) that …"
+
     ---
 
-    ### 📋 Scoring Breakdown (4 Criteria × 25 Pts = 100 Max)
+    ### 📋 Scoring — 4 pillars × 25 = 100
 
-    | Criterion | Weight | What We Grade | Exemplar Alignment |
-    | :--- | :---: | :--- | :--- |
-    | **1. Clarity of Scope (BLUF)** | **25 pts** | Time window, sector boundaries, and clear Bottom Line Up Front opening. | Matches Section 1 (Executive Summary) |
-    | **2. Evidence & Risk Drivers** | **25 pts** | Specific threat vectors, attack mechanisms, and grounded telemetry (not generic news). | Matches Section 2 (Key Risk Developments) |
-    | **3. Methodology & Business Impact** | **25 pts** | Translation of technical threats into operational, financial, and legal business impacts. | Matches Section 3 (Business Impact Analysis) |
-    | **4. Actionability & Recommendations**| **25 pts** | Concrete, decision-ready actions (budget requests, FIDO2, verification workflows). | Matches Section 4 (Strategic Recommendations) |
+    | Pillar | What earns the marks | Hard caps |
+    | :--- | :--- | :--- |
+    | **1. Structure, Scope & Completeness** | BLUF present; scope + time window defined; sections complete and appropriate to the subject; appendix present if numbered refs are used. | No BLUF → max 8. Missing the subject-critical section (e.g. vuln report with no business impact) → max 10. |
+    | **2. Evidence & Sourcing** | Every factual claim has a traceable citation (inline URL or numbered appendix reference); source confidence characterised. | Several uncited material claims → max 10. No sourcing mechanism at all → max 5. |
+    | **3. Analytic Tradecraft & Estimative Language** | ICD 203 likelihood terms; explicit confidence level kept separate from likelihood; methodology, assumptions, intel gaps; consistent throughout. | No estimative/confidence language anywhere → max 8. Confidence and likelihood conflated → max 15. |
+    | **4. Executive Communication & Actionability** | Written for leadership; jargon controlled; clear "so what"; prioritised, decision-ready recommendations. | Raw technical dump, no exec framing → max 8. Recommendations absent or generic ("stay vigilant") → max 8. |
 
     ---
-    ### 🎯 Grade Scale
-    - **90 – 100:** Grade A (Outstanding / Production Ready)
-    - **80 – 89:** Grade B (Solid professional report)
-    - **70 – 79:** Grade C (Acceptable, minor omissions)
-    - **60 – 69:** Grade D (Substandard)
-    - **Below 60:** Grade F (Failed / Inadequate)
+    ### 🎯 How to read your score
+
+    There is **no letter grade and no pass/fail** — this is a practice tool. The 0–100
+    number is only there to make progress between drafts visible. Work from the
+    per-pillar explanations, the gaps list, and the "what changed" note on each revision.
     """)

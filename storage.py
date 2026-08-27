@@ -5,7 +5,7 @@ import datetime
 from typing import List, Optional
 import pandas as pd
 
-from schemas import SubmissionRecord, GradingResult
+from schemas import SubmissionRecord, GradingResult, Level1Assessment, IntegrityReview
 
 # Configuration
 COLLECTION_NAME = os.getenv("FIRESTORE_COLLECTION", "cti_submissions")
@@ -54,7 +54,7 @@ def _init_sqlite_db(db_path: str = SQLITE_DB_PATH):
                 report_content TEXT NOT NULL,
                 total_score INTEGER NOT NULL,
                 percentage_score REAL NOT NULL,
-                letter_grade TEXT NOT NULL,
+                letter_grade TEXT,
                 actionability_score INTEGER NOT NULL,
                 clarity_of_scope_score INTEGER NOT NULL,
                 evidence_and_attribution_score INTEGER NOT NULL,
@@ -62,9 +62,14 @@ def _init_sqlite_db(db_path: str = SQLITE_DB_PATH):
                 primary_model_used TEXT NOT NULL,
                 final_model_used TEXT NOT NULL,
                 level_1_json TEXT,
-                result_json TEXT NOT NULL
+                result_json TEXT NOT NULL,
+                integrity_json TEXT
             )
         """)
+        # Lightweight migration for databases created before integrity_json existed.
+        cols = {row[1] for row in cursor.execute("PRAGMA table_info(submissions)")}
+        if "integrity_json" not in cols:
+            cursor.execute("ALTER TABLE submissions ADD COLUMN integrity_json TEXT")
         conn.commit()
 
 
@@ -111,7 +116,6 @@ def save_submission(record: SubmissionRecord) -> None:
         "report_content": record.report_content,
         "total_score": record.total_score,
         "percentage_score": record.percentage_score,
-        "letter_grade": record.letter_grade,
         "actionability_score": record.actionability_score,
         "clarity_of_scope_score": record.clarity_of_scope_score,
         "evidence_and_attribution_score": record.evidence_and_attribution_score,
@@ -119,7 +123,8 @@ def save_submission(record: SubmissionRecord) -> None:
         "primary_model_used": record.primary_model_used,
         "final_model_used": record.final_model_used,
         "level_1_json": json.dumps(record.level_1_result.model_dump()) if record.level_1_result else None,
-        "result_json": json.dumps(record.result.model_dump())
+        "result_json": json.dumps(record.result.model_dump()),
+        "integrity_json": json.dumps(record.integrity.model_dump()) if record.integrity else None,
     }
 
     client = get_firestore_client()
@@ -141,8 +146,8 @@ def save_submission(record: SubmissionRecord) -> None:
                 total_score, percentage_score, letter_grade,
                 actionability_score, clarity_of_scope_score,
                 evidence_and_attribution_score, methodology_score,
-                primary_model_used, final_model_used, level_1_json, result_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                primary_model_used, final_model_used, level_1_json, result_json, integrity_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             record.submission_id,
             record.timestamp,
@@ -157,7 +162,6 @@ def save_submission(record: SubmissionRecord) -> None:
             record.report_content,
             record.total_score,
             record.percentage_score,
-            record.letter_grade,
             record.actionability_score,
             record.clarity_of_scope_score,
             record.evidence_and_attribution_score,
@@ -165,7 +169,8 @@ def save_submission(record: SubmissionRecord) -> None:
             record.primary_model_used,
             record.final_model_used,
             doc_data["level_1_json"],
-            doc_data["result_json"]
+            doc_data["result_json"],
+            doc_data["integrity_json"],
         ))
         conn.commit()
 
@@ -175,7 +180,14 @@ def _row_to_record(d: dict) -> SubmissionRecord:
     level_1_res = None
     if d.get("level_1_json"):
         try:
-            level_1_res = GradingResult(**json.loads(d["level_1_json"]))
+            level_1_res = Level1Assessment(**json.loads(d["level_1_json"]))
+        except Exception:
+            pass
+
+    integrity = None
+    if d.get("integrity_json"):
+        try:
+            integrity = IntegrityReview(**json.loads(d["integrity_json"]))
         except Exception:
             pass
 
@@ -186,13 +198,12 @@ def _row_to_record(d: dict) -> SubmissionRecord:
         student_email=d.get("student_email", ""),
         attempt_number=d.get("attempt_number", 1),
         report_title=d["report_title"],
-        report_type=d.get("report_type", "Strategic Threat Landscape"),
+        report_type=d.get("report_type", "General CTI Briefing"),
         filename=d.get("filename"),
         file_type=d["file_type"],
         report_content=d.get("report_content", ""),
         total_score=d["total_score"],
         percentage_score=d["percentage_score"],
-        letter_grade=d["letter_grade"],
         actionability_score=d["actionability_score"],
         clarity_of_scope_score=d["clarity_of_scope_score"],
         evidence_and_attribution_score=d["evidence_and_attribution_score"],
@@ -200,7 +211,8 @@ def _row_to_record(d: dict) -> SubmissionRecord:
         primary_model_used=d.get("primary_model_used", "gemini-3.5-flash-lite"),
         final_model_used=d.get("final_model_used", "gemini-3.7-flash"),
         level_1_result=level_1_res,
-        result=GradingResult(**result_dict)
+        result=GradingResult(**result_dict),
+        integrity=integrity,
     )
 
 
@@ -270,17 +282,20 @@ def get_submissions_dataframe() -> pd.DataFrame:
     
     rows = []
     for r in records:
+        l1_total = r.level_1_result.total_score if r.level_1_result else None
         rows.append({
             "Student Name": r.student_name,
             "Email": r.student_email,
             "Attempt #": r.attempt_number,
             "Total Score (100)": r.total_score,
-            "Grade": r.letter_grade,
-            "Report Type": r.report_type,
-            "Actionability (25)": r.actionability_score,
-            "Scope (25)": r.clarity_of_scope_score,
-            "Evidence (25)": r.evidence_and_attribution_score,
-            "Methodology (25)": r.methodology_score,
+            "Tier 1 Total": l1_total,
+            "Δ (T2-T1)": (r.total_score - l1_total) if l1_total is not None else None,
+            "Integrity": (r.integrity.severity if r.integrity and r.integrity.manipulation_detected else "ok"),
+            "Report Subject": r.report_type,
+            "Structure (25)": r.clarity_of_scope_score,
+            "Sourcing (25)": r.evidence_and_attribution_score,
+            "Tradecraft (25)": r.methodology_score,
+            "Exec/Action (25)": r.actionability_score,
             "Report Title": r.report_title,
             "Filename": r.filename or "Direct Paste",
             "Submitted At": r.timestamp,
