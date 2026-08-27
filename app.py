@@ -491,60 +491,44 @@ elif app_mode == "📖 Rubric Reference":
     st.markdown('<div class="sub-title">Evaluation criteria dynamically calibrated by report category.</div>', unsafe_allow_html=True)
     
     st.markdown("""
-    ### 🕵️ 1. Threat Actor Deep Dive Report
-    *Comprehensive profiling of a specific threat actor, APT cluster, or cybercrime syndicate.*
-    - **Clarity of Scope (0–25):** 
-      - *Identity & Alias Hygiene:* Primary designation stated, vendor aliases mapped, naming conflicts acknowledged, cluster boundaries defined. *(Undifferentiated alias soup = max 5/25)*.
-      - *Victimology & Targeting Logic:* Granular sectors, geographies, organization profile, time-bounded, and reasoning for what drives target selection. *(Sector list with no reasoning = max 7/25)*.
-    - **Evidence & Attribution (0–25):** 
-      - *Attribution Basis:* Visible evidence chain (technical, infrastructure, temporal, linguistic). Stated confidence must be justified. *(State-sponsorship asserted without evidence chain = hard cap at 8/25)*.
-      - *Infrastructure & Tooling:* Malware families, loaders, C2 patterns, hosting/registration habits, distinguishing bespoke from commodity tooling.
-    - **Methodology (0–25):** 
-      - *TTP Depth & ATT&CK Mapping:* Technique-level with sub-techniques tied to specific observed campaigns; full lifecycle from initial access to impact. *(Tactic names only = max 5/25)*.
-      - *Analytic Tradecraft:* Diamond Model / Kill Chain analysis, intelligence sourcing, BLUF, and non-repetitive structure.
-    - **Actionability (0–25):** 
-      - *Detection & Hunting Value:* Behavioral detection opportunities and named log sources/telemetry (Sysmon, Zeek, Windows Event IDs). *(IOC list / hash dump alone = max 5/25)*.
-      - *Forecast & Defensive Posture:* Where the actor is heading and proactive hardening guidance.
+    ### 🏆 Gold Standard Threat Report Structure & Rubric
+
+    Evaluations are grounded in a 4-section executive & operational benchmark:
+
+    ```markdown
+    # 1. Executive Summary - (Bottom Line Up Front / BLUF)
+    - Time-bounded, sector-specific, baseline vs actual exposure, root cause stated.
+    - Example: "Between Q1 and Q2, our sector experienced a 40% increase in sophisticated spear-phishing and token-based session hijacking. While automated defenses blocked 99.8% of attempts, one targeted campaign successfully impersonated a C-suite executive to request unauthorized wire processing. Total financial impact was mitigated, but exposure highlighted a gap in human-layer verification culture."
+
+    # 2. Key Risk Developments & Threat Drivers
+    - Concrete threat dynamics, specific attack vectors, grounded statistics.
+    - Example: AI-driven deepfake phishing, third-party vendor zero-days, dark web Initial Access Broker (IAB) insider recruitment trends.
+
+    # 3. Business Impact Analysis
+    - Direct translation of cyber threats into operational, financial, and regulatory/legal consequences for decision-makers.
+    - Example: Operational supply chain disruption risks, compliance disclosure obligations.
+
+    # 4. Strategic Recommendations / Requested Actions
+    - Decision-ready, concrete technical/process interventions with named scope.
+    - Example: Budget approval for hardware-bound FIDO2 keys; mandatory out-of-band "Pause → Verify" approval workflows.
+    ```
 
     ---
 
-    ### 🌐 2. Country Threat Landscape
-    *Macro overview of the cyber threat environment facing a nation or region (e.g. Singapore Cyber Threat Landscape).*
-    - **Clarity of Scope (0–25):** 
-      - *Scope & Framing:* Country, time window, sectors in/out of scope, clearly separates "threats to" vs "threats from".
-      - *Geopolitical & Regulatory Context:* Why this country, why now; relevant regulation or policy shaping the threat or response. *(Generic geopolitical commentary = max 5/25)*.
-    - **Evidence & Attribution (0–25):** 
-      - *Sector Targeting Evidence:* Grounded in actual in-country incidents or telemetry, not inferred from the country's economic profile/GDP.
-      - *Actor Coverage Balance:* State-nexus, cybercrime, and hacktivism proportionate to in-country reality, not imported from global reputation.
-    - **Methodology (0–25):** 
-      - *Analytic Rigour:* ICD 203 estimative probability language, confidence tied to sourcing, alternative explanations considered, zero nation-state hype.
-      - *Data & Trend Validity:* Baseline/prior-period comparisons, stated denominators, local vs global dataset distinction.
-    - **Actionability (0–25):** 
-      - *So-What & Recommendations:* Actionable for defenders operating specifically in that national jurisdiction.
-      - *(Note: Atomic IoCs and low-level YARA/Sigma rules are **NOT** expected or required).*
+    ### 📋 Scoring Breakdown (4 Criteria × 25 Pts = 100 Max)
+
+    | Criterion | Weight | What We Grade | Exemplar Alignment |
+    | :--- | :---: | :--- | :--- |
+    | **1. Clarity of Scope (BLUF)** | **25 pts** | Time window, sector boundaries, and clear Bottom Line Up Front opening. | Matches Section 1 (Executive Summary) |
+    | **2. Evidence & Risk Drivers** | **25 pts** | Specific threat vectors, attack mechanisms, and grounded telemetry (not generic news). | Matches Section 2 (Key Risk Developments) |
+    | **3. Methodology & Business Impact** | **25 pts** | Translation of technical threats into operational, financial, and legal business impacts. | Matches Section 3 (Business Impact Analysis) |
+    | **4. Actionability & Recommendations**| **25 pts** | Concrete, decision-ready actions (budget requests, FIDO2, verification workflows). | Matches Section 4 (Strategic Recommendations) |
 
     ---
-
-    ### 🛡️ 3. CVE Strategic Reporting
-    *Strategic and technical assessment of a critical vulnerability or emerging exploitation trend.*
-    - **Actionability (0–25):** 
-      - *Decision Framing:* Opens with the concrete decision being asked for (Emergency patch / Scheduled patch / Accept risk / Monitor). *(Opening with technical details instead of the decision = max 5/25)*.
-      - *Remediation Path & Tradeoffs:* Realistic patch timeline, downtime/compatibility costs, interim compensating controls, named owner. *("Apply vendor patch" alone without tradeoffs = max 5/25)*.
-    - **Clarity of Scope (0–25):** 
-      - *Exposure Assessment:* Do we run it, where, how many instances, internet-facing? *(Silence on exposure = max 5/25; honest "exposure unknown, here is how we find out" scores higher)*.
-      - *Business Impact Articulated:* Operational and financial consequences translated for executives. *(Raw CIA-triad jargon without translation = max 5/25)*.
-    - **Evidence & Attribution (0–25):** 
-      - *Prioritisation Rationale:* Why this CVE ahead of everything else (exploitation likelihood, CISA KEV status, EPSS score, asset criticality). *(CVSS severity score as sole argument = max 5/25)*.
-      - *Exploitation Status Precision:* Clearly separates Exploitable vs Public PoC vs Active In-The-Wild Exploitation with dated and sourced claims.
-    - **Methodology (0–25):** 
-      - *Technical Depth Calibration:* Calibrated for decision-makers (enough to be credible, no excess). *(Penalize raw technical exploit dump wearing a strategic label)*.
-      - *Analytic Synthesis:* Structured risk rationale, clear executive summary, coherent trade-off analysis.
-
-    ---
-    ### Grade Scale
+    ### 🎯 Grade Scale
     - **90 – 100:** Grade A (Outstanding / Production Ready)
     - **80 – 89:** Grade B (Solid professional report)
-    - **70 – 79:** Grade C (Acceptable, noticeable tradecraft gaps)
-    - **60 – 69:** Grade D (Substandard / hits multiple hard caps)
+    - **70 – 79:** Grade C (Acceptable, minor omissions)
+    - **60 – 69:** Grade D (Substandard)
     - **Below 60:** Grade F (Failed / Inadequate)
     """)
