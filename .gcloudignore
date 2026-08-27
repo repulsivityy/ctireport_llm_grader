@@ -1,0 +1,31 @@
+# Files uploaded to Cloud Build for `gcloud run deploy --source .`
+# (without this file, gcloud falls back to .gitignore)
+
+.git/
+.gitignore
+.gcloudignore
+.dockerignore
+
+__pycache__/
+*.py[cod]
+.Python
+env/
+venv/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.vscode/
+.idea/
+.DS_Store
+
+.env
+*.env
+!.env.example
+*.key
+*.pem
+submissions.db
+
+# Teaching material / dev tooling - not shipped in the image
+sample_reports/
+tests/
+smoke_grader.py

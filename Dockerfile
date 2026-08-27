@@ -27,4 +27,4 @@ EXPOSE 8080
 HEALTHCHECK CMD curl --fail http://localhost:8080/_stcore/health || exit 1
 
 # Launch Streamlit with Cloud Run port binding
-ENTRYPOINT ["sh", "-c", "streamlit run app.py --server.port=${PORT:-8080} --server.address=0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=false --browser.serverAddress=0.0.0.0 --server.headless=true"]
+ENTRYPOINT ["sh", "-c", "streamlit run app.py --server.port=${PORT:-8080} --server.address=0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=true --server.maxUploadSize=10 --browser.serverAddress=0.0.0.0 --server.headless=true"]

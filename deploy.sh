@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Deploy CTI Report Grader to Google Cloud Run with Secret Manager & Firestore
+# CTI Report Grader - deploy / purge helper
+#
+#   ./deploy.sh            Build & deploy to Cloud Run behind Identity-Aware Proxy
+#   ./deploy.sh purge      PERMANENTLY delete all stored submissions (Firestore + local)
+#   ./deploy.sh iap-access Re-grant IAP access to ALLOWED_PRINCIPALS only
 # ==============================================================================
 
 set -euo pipefail
 
-# 1. Load variables from .env if present
+MODE="${1:-deploy}"
+
+# ------------------------------------------------------------------ env / config
 if [ -f .env ]; then
-  # Export non-comment lines
   set -a
   source .env
   set +a
@@ -21,102 +26,156 @@ SECRET_NAME="${SECRET_NAME:-GEMINI_API_KEY}"
 INSTRUCTOR_EMAILS="${INSTRUCTOR_EMAILS:-}"
 PRIMARY_MODEL="${PRIMARY_MODEL:-gemini-3.5-flash-lite}"
 META_MODEL="${META_MODEL:-gemini-3.7-flash}"
-
-echo "======================================================"
-echo "🛡️ Deploying CTI Report Grader (Cloud Run + Secrets)"
-echo "======================================================"
-echo "Project ID           : ${PROJECT_ID}"
-echo "Region               : ${REGION}"
-echo "Service Name         : ${SERVICE_NAME}"
-echo "Firestore Collection : ${FIRESTORE_COLLECTION}"
-echo "Secret Name          : ${SECRET_NAME}"
-echo "Level 1 Model        : ${PRIMARY_MODEL}"
-echo "Final Evaluator      : ${META_MODEL}"
-echo "Instructor Emails    : ${INSTRUCTOR_EMAILS}"
-echo "======================================================"
+ALLOWED_PRINCIPALS="${ALLOWED_PRINCIPALS:-}"
 
 if [ -z "${PROJECT_ID}" ]; then
-  echo "❌ Error: Google Cloud Project ID is not set."
-  echo "Run: gcloud config set project <YOUR_PROJECT_ID>"
+  echo "❌ Google Cloud Project ID is not set. Run: gcloud config set project <ID>"
   exit 1
 fi
+gcloud config set project "${PROJECT_ID}" >/dev/null
 
-# Set active project
-echo "⚙️ Setting active gcloud project to ${PROJECT_ID}..."
-gcloud config set project "${PROJECT_ID}"
+grant_iap_access() {
+  if [ -z "${ALLOWED_PRINCIPALS}" ]; then
+    echo "⚠️  ALLOWED_PRINCIPALS not set - grant IAP access manually, e.g.:"
+    echo "    gcloud run services add-iam-policy-binding ${SERVICE_NAME} --region ${REGION} \\"
+    echo "      --member='group:cti-class@your-domain.edu' --role='roles/iap.httpsResourceAccessor'"
+    return
+  fi
+  echo "🔐 Granting roles/iap.httpsResourceAccessor to: ${ALLOWED_PRINCIPALS}"
+  IFS=',' read -ra _PRINCIPALS <<< "${ALLOWED_PRINCIPALS}"
+  for principal in "${_PRINCIPALS[@]}"; do
+    gcloud run services add-iam-policy-binding "${SERVICE_NAME}" \
+      --project="${PROJECT_ID}" --region="${REGION}" \
+      --member="$(echo "${principal}" | xargs)" \
+      --role="roles/iap.httpsResourceAccessor" >/dev/null
+  done
+}
 
-# Enable required Google Cloud APIs
-echo "🔧 Enabling Required Google Cloud APIs..."
+# ==============================================================================
+# PURGE - delete all stored submissions
+# ==============================================================================
+if [ "${MODE}" = "purge" ]; then
+  echo "======================================================"
+  echo "⚠️  PURGE - this permanently deletes ALL student submissions"
+  echo "   Project    : ${PROJECT_ID}"
+  echo "   Firestore  : collection '${FIRESTORE_COLLECTION}'"
+  echo "   Local file : ./submissions.db (if present)"
+  echo "======================================================"
+  read -r -p "Type the collection name ('${FIRESTORE_COLLECTION}') to confirm: " CONFIRM
+  if [ "${CONFIRM}" != "${FIRESTORE_COLLECTION}" ]; then
+    echo "Aborted."
+    exit 1
+  fi
+
+  echo "🔥 Deleting Firestore collection '${FIRESTORE_COLLECTION}'..."
+  gcloud firestore bulk-delete \
+    --collection-ids="${FIRESTORE_COLLECTION}" \
+    --project="${PROJECT_ID}" \
+    --quiet
+
+  if [ -f submissions.db ]; then
+    rm -f submissions.db
+    echo "🧹 Removed local submissions.db"
+  fi
+
+  echo "✅ Purge complete. (A running Cloud Run instance may hold a stale in-memory"
+  echo "   Firestore client cache; redeploy or wait for it to recycle if needed.)"
+  exit 0
+fi
+
+# ==============================================================================
+# IAP-ACCESS - re-grant access without redeploying
+# ==============================================================================
+if [ "${MODE}" = "iap-access" ]; then
+  grant_iap_access
+  exit 0
+fi
+
+# ==============================================================================
+# DEPLOY
+# ==============================================================================
+echo "======================================================"
+echo "🛡️  Deploying CTI Report Grader (Cloud Run + IAP)"
+echo "   Project / Region : ${PROJECT_ID} / ${REGION}"
+echo "   Service          : ${SERVICE_NAME}"
+echo "   Firestore        : ${FIRESTORE_COLLECTION}"
+echo "   Models           : ${PRIMARY_MODEL}  |  ${META_MODEL}"
+echo "   Instructors      : ${INSTRUCTOR_EMAILS}"
+echo "======================================================"
+
+echo "🔧 Enabling required APIs..."
 gcloud services enable \
   run.googleapis.com \
   firestore.googleapis.com \
   secretmanager.googleapis.com \
   cloudbuild.googleapis.com \
   artifactregistry.googleapis.com \
+  iap.googleapis.com \
   --project="${PROJECT_ID}"
 
-# Get project number to configure Cloud Run service account permissions
 PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
 CLOUD_RUN_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
-# Manage Secret Manager for GEMINI_API_KEY
-echo "🔒 Synchronizing Google Secret Manager for '${SECRET_NAME}'..."
+# --- Secret Manager: GEMINI_API_KEY ------------------------------------------
+echo "🔒 Synchronising Secret Manager '${SECRET_NAME}'..."
 if ! gcloud secrets describe "${SECRET_NAME}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
   if [ -n "${GEMINI_API_KEY:-}" ]; then
-    echo "Creating new secret '${SECRET_NAME}' in Secret Manager..."
-    echo -n "${GEMINI_API_KEY}" | tr -d '\r\n' | gcloud secrets create "${SECRET_NAME}" \
-      --data-file=- \
-      --replication-policy="automatic" \
-      --project="${PROJECT_ID}"
+    printf '%s' "${GEMINI_API_KEY}" | tr -d '\r\n' | gcloud secrets create "${SECRET_NAME}" \
+      --data-file=- --replication-policy="automatic" --project="${PROJECT_ID}"
   else
-    echo "⚠️ Warning: Secret '${SECRET_NAME}' not found in Secret Manager and GEMINI_API_KEY not in .env."
+    echo "⚠️  Secret '${SECRET_NAME}' missing and GEMINI_API_KEY not in .env."
   fi
-else
-  if [ -n "${GEMINI_API_KEY:-}" ]; then
-    echo "Updating secret '${SECRET_NAME}' with latest key from .env..."
-    echo -n "${GEMINI_API_KEY}" | tr -d '\r\n' | gcloud secrets versions add "${SECRET_NAME}" \
-      --data-file=- \
-      --project="${PROJECT_ID}"
-  else
-    echo "✅ Secret '${SECRET_NAME}' already exists in Secret Manager."
-  fi
+elif [ -n "${GEMINI_API_KEY:-}" ]; then
+  printf '%s' "${GEMINI_API_KEY}" | tr -d '\r\n' | gcloud secrets versions add "${SECRET_NAME}" \
+    --data-file=- --project="${PROJECT_ID}"
 fi
 
-# Grant Cloud Run service account access to Secret Manager
-echo "🔑 Granting Cloud Run Service Account (${CLOUD_RUN_SA}) Secret Accessor role..."
 gcloud secrets add-iam-policy-binding "${SECRET_NAME}" \
   --member="serviceAccount:${CLOUD_RUN_SA}" \
   --role="roles/secretmanager.secretAccessor" \
   --project="${PROJECT_ID}" >/dev/null
 
-# Grant Cloud Run service account access to Firestore (datastore.user)
-echo "📦 Granting Cloud Run Service Account (${CLOUD_RUN_SA}) Firestore User role..."
+# --- Firestore access for the runtime SA ------------------------------------
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${CLOUD_RUN_SA}" \
   --role="roles/datastore.user" \
   --condition=None >/dev/null
 
-# Build & Deploy to Cloud Run mounting the Secret
-echo "🚀 Building container and deploying to Cloud Run (${REGION})..."
+# --- IAP service identity ---------------------------------------------------
+echo "🪪 Ensuring the IAP service identity exists..."
+gcloud beta services identity create --service=iap.googleapis.com --project="${PROJECT_ID}" >/dev/null 2>&1 || true
+
+# --- Build & deploy (no anonymous access; IAP in front) --------------------
+# The app trusts only the IAP-verified identity, never a form field, to decide
+# who is an instructor.
+echo "🚀 Building and deploying behind IAP..."
 gcloud run deploy "${SERVICE_NAME}" \
   --source . \
   --project="${PROJECT_ID}" \
   --region="${REGION}" \
   --platform=managed \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
+  --iap \
   --port=8080 \
   --memory=1Gi \
   --cpu=1 \
   --set-env-vars="^##^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}##FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION}##PRIMARY_MODEL=${PRIMARY_MODEL}##META_MODEL=${META_MODEL}##INSTRUCTOR_EMAILS=${INSTRUCTOR_EMAILS}" \
   --set-secrets="GEMINI_API_KEY=${SECRET_NAME}:latest"
 
-echo "======================================================"
-echo "🎉 Deployment Complete!"
+grant_iap_access
+
 SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --platform managed --region "${REGION}" --project "${PROJECT_ID}" --format 'value(status.url)')
-echo "🌐 Live Application URL : ${SERVICE_URL}"
-echo "📦 Firestore Collection : ${FIRESTORE_COLLECTION}"
-echo "🔒 Secret Mounted       : ${SECRET_NAME} -> GEMINI_API_KEY"
-echo "🤖 Level 1 Model        : ${PRIMARY_MODEL}"
-echo "🤖 Final Evaluator      : ${META_MODEL}"
-echo "👨‍🏫 Authorized Instructors: ${INSTRUCTOR_EMAILS}"
+
+echo "======================================================"
+echo "🎉 Deployment complete"
+echo "🌐 URL        : ${SERVICE_URL}"
+echo "🔒 Access     : Google IAP only (no anonymous access)"
+echo "👨‍🏫 Instructors: ${INSTRUCTOR_EMAILS}"
+echo "                (must match each user's Google account email as seen by IAP)"
+echo
+echo "Follow-ups you may still need to do once, in the console:"
+echo "  • Configure the OAuth consent screen if this project has never used IAP."
+echo "  • (Optional hardening) verify the signed IAP JWT instead of trusting the"
+echo "    identity header: set IAP_JWT_AUDIENCE (see"
+echo "    https://cloud.google.com/iap/docs/signed-headers-howto) and redeploy."
 echo "======================================================"
