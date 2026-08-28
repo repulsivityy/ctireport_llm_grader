@@ -123,42 +123,53 @@ list, and the "what changed" note on each revision. The four pillar scores are s
 
 ---
 
-## 🔒 Access control
+## 🔒 Authentication & Access Control
 
-The app is designed to run **behind Google Identity-Aware Proxy (IAP)**. Identity is taken
-only from the IAP-verified header (or a verified JWT assertion when `IAP_JWT_AUDIENCE` is
-set) — never from a form field. Instructor status = verified email ∈ `INSTRUCTOR_EMAILS`.
+The app features a **public-facing landing page** with secure **Google Sign-In (OAuth 2.0 / OIDC)**:
 
-For local development set `ALLOW_INSECURE_LOCAL_AUTH=true` to fall back to a self-declared
-identity in the sidebar. **Never set this in a deployed environment.**
+- **Visitors & Students**: Can immediately view the landing page, read the course briefing, and review the **📖 Rubric Reference** without authenticating.
+- **Report Submission**: Clicking **"🔵 Sign in with Google"** authenticates the user via Google Accounts (GAIA / OAuth 2.0).
+  - Supports any Google Workspace account or `@gmail.com` user.
+  - Automatically identifies the student to track their revision attempts, past scores, and progression deltas.
+- **Instructor Gradebook**: The **"📊 Instructor Gradebook"** tab only unlocks if the authenticated Google email matches `INSTRUCTOR_EMAILS`. Students cannot access or tamper with instructor views.
+- **Local Development**: Set `ALLOW_INSECURE_LOCAL_AUTH=true` in `.env` to enable an email input in the sidebar for offline testing.
 
 ---
 
-## ☁️ Deploy to Google Cloud Run (behind IAP)
+## ☁️ Deploy to Google Cloud Run
 
+### 1. Configure Environment (`.env`)
+Copy and configure `.env`:
 ```bash
-cp .env.example .env      # fill in GEMINI_API_KEY, INSTRUCTOR_EMAILS, ALLOWED_PRINCIPALS
+cp .env.example .env
+```
+Ensure the following are set:
+- `GEMINI_API_KEY`: Your Google GenAI API key.
+- `GOOGLE_CLOUD_PROJECT`: Your GCP project ID (e.g. `virustotal-lab`).
+- `INSTRUCTOR_EMAILS`: Comma-separated list of instructor Google emails.
+- `GOOGLE_CLIENT_ID` & `GOOGLE_CLIENT_SECRET`: OAuth 2.0 Web Client credentials from GCP Console (`APIs & Services > Credentials`).
+- `REDIRECT_URI`: `https://<YOUR-CLOUD-RUN-SERVICE-URL>/oauth2callback`
+
+### 2. Deploy
+```bash
 chmod +x deploy.sh
 ./deploy.sh
 ```
 
-`deploy.sh` deploys with `--no-allow-unauthenticated --iap`, ensures the IAP service
-identity exists, and (if `ALLOWED_PRINCIPALS` is set) grants `roles/iap.httpsResourceAccessor`
-to the course group/domain. Teaching material (`sample_reports/`, `tests/`) is excluded from
-the image via `.gcloudignore` / `.dockerignore`.
+`deploy.sh` automatically:
+1. Enables required GCP APIs (Secret Manager, Cloud Run, Cloud Build, Firestore).
+2. Syncs `GEMINI_API_KEY` into Secret Manager.
+3. Builds and deploys the container to Cloud Run with public landing page access.
+4. Mounts the runtime secrets and environment variables.
 
-Other subcommands:
-
+### Management Subcommands
 ```bash
 ./deploy.sh purge        # PERMANENTLY delete every stored submission (Firestore + local db)
-./deploy.sh iap-access   # re-grant IAP access to ALLOWED_PRINCIPALS without redeploying
 ```
-
-One-time console step: configure the OAuth consent screen if the project has never used IAP.
 
 ---
 
-## 💻 Local testing
+## 💻 Local Testing
 
 ```bash
 pip install -r requirements.txt
@@ -167,5 +178,6 @@ ALLOW_INSECURE_LOCAL_AUTH=true streamlit run app.py
 
 Open `http://localhost:8501`.
 
-Sample inputs live in `sample_reports/` (`sample_good_report.md`, and
-`sample_prompt_injection_attempt.md` which the grader should refuse to be manipulated by).
+Sample inputs live in `sample_reports/`:
+- `sample_good_report.md`: Baseline high-scoring exemplar.
+- `sample_prompt_injection_attempt.md`: Adversarial report attempting to instruct the grader to assign 100/100, which trips the Tier 2 integrity review.

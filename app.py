@@ -13,6 +13,9 @@ from grader import CTIGrader, EvaluationUnavailable
 import storage
 import auth
 
+# Initialize Streamlit secrets for Google OAuth if env variables exist
+auth.setup_streamlit_auth()
+
 load_dotenv()
 
 st.set_page_config(
@@ -39,6 +42,40 @@ st.markdown("""
         font-size: 1.05rem;
         color: #64748B;
         margin-bottom: 1.5rem;
+    }
+    .hero-banner {
+        background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+        color: #FFFFFF;
+        padding: 2.5rem 2rem;
+        border-radius: 14px;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+    .hero-title {
+        font-size: 2.5rem;
+        font-weight: 800;
+        color: #38BDF8;
+        margin-bottom: 0.5rem;
+    }
+    .hero-sub {
+        font-size: 1.15rem;
+        color: #CBD5E1;
+        max-width: 800px;
+        line-height: 1.6;
+        margin-bottom: 1.5rem;
+    }
+    .feature-card {
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 1.2rem;
+        height: 100%;
+    }
+    .feature-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #0F172A;
+        margin-bottom: 0.5rem;
     }
     .score-card {
         background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
@@ -119,8 +156,7 @@ def init_session_state():
 
 init_session_state()
 
-# Identity is taken ONLY from a trusted source (IAP / OIDC) - never a form field -
-# so a student cannot unlock the instructor gradebook by typing another address.
+# Identity resolution from Streamlit OIDC or IAP
 authenticated_email = auth.get_authenticated_email()
 DEV_AUTH = auth.allow_insecure_local_auth()
 
@@ -128,60 +164,141 @@ if authenticated_email:
     if st.session_state.user_email != authenticated_email:
         st.session_state.user_email = authenticated_email
         st.session_state.current_result = None
-elif not DEV_AUTH:
-    st.error(
-        "🔒 **Sign-in required.** This application must be reached through the "
-        "authenticated course portal. If you navigated here directly, go back to "
-        "the course link and sign in with your institutional Google account."
-    )
-    st.stop()
 
-# Instructor status derives from the verified address only.
-is_instructor = bool(st.session_state.user_email) and st.session_state.user_email in INSTRUCTOR_EMAILS
+is_logged_in = bool(st.session_state.user_email)
+is_instructor = is_logged_in and st.session_state.user_email in INSTRUCTOR_EMAILS
 
-# Sidebar Navigation
+# Sidebar Navigation & Authentication Control
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/cyber-security.png", width=64)
     st.title("CTI Grader Control")
     
     st.subheader("👤 User Identity")
-    if authenticated_email:
-        st.caption("Verified identity (secure sign-in)")
-        st.code(authenticated_email, language=None)
-    elif DEV_AUTH:
-        st.warning("⚠️ Insecure local-auth mode: identity is self-declared. Do not enable in production.")
-        email_input = st.text_input(
-            "Your Email Address *",
-            value=st.session_state.user_email,
-            placeholder="e.g. student@domain.com",
-            help="Local development only. In production, identity comes from IAP sign-in."
-        )
-        if email_input.strip().lower() != st.session_state.user_email:
-            st.session_state.user_email = email_input.strip().lower()
+    if is_logged_in:
+        st.caption("Verified Identity (Google Sign-In)")
+        st.code(st.session_state.user_email, language=None)
+        if is_instructor:
+            st.success(f"👨‍🏫 **Instructor Mode Enabled**")
+        else:
+            st.info(f"🎓 **Student Access**")
+            
+        if st.button("🚪 Sign out", use_container_width=True):
+            if hasattr(st, "logout"):
+                try:
+                    st.logout()
+                except Exception:
+                    pass
+            st.session_state.user_email = ""
             st.session_state.current_result = None
             st.rerun()
+    else:
+        st.caption("Not signed in")
+        if st.button("🔵 Sign in with Google", type="primary", use_container_width=True):
+            if hasattr(st, "login"):
+                try:
+                    st.login("google")
+                except Exception as e:
+                    st.error(f"Sign in error: {e}")
+            else:
+                st.warning("Native login requires Streamlit >= 1.38.")
+                
+        if DEV_AUTH:
+            st.divider()
+            st.warning("⚠️ Local-auth mode active")
+            email_input = st.text_input(
+                "Local Email Override",
+                value=st.session_state.user_email,
+                placeholder="student@domain.com"
+            )
+            if email_input.strip().lower() != st.session_state.user_email:
+                st.session_state.user_email = email_input.strip().lower()
+                st.session_state.current_result = None
+                st.rerun()
 
-    # Role badge
-    if st.session_state.user_email:
-        if is_instructor:
-            st.success(f"👨‍🏫 **Instructor Mode Enabled**\n`{st.session_state.user_email}`")
-        else:
-            st.info(f"🎓 **Student Identity:**\n`{st.session_state.user_email}`")
-    
     st.divider()
 
-    # Dynamic Navigation Tabs based on Role
-    nav_options = ["📝 Submit & Grade Report", "📖 Rubric Reference"]
-    if is_instructor:
-        nav_options.insert(1, "📊 Instructor Gradebook")
+    # Dynamic Navigation Tabs
+    if is_logged_in:
+        nav_options = ["📝 Submit & Grade Report", "📖 Rubric Reference"]
+        if is_instructor:
+            nav_options.insert(1, "📊 Instructor Gradebook")
+        app_mode = st.radio("Navigation", nav_options, index=0)
+    else:
+        nav_options = ["🏠 Welcome & Sign In", "📖 Rubric Reference"]
+        app_mode = st.radio("Navigation", nav_options, index=0)
+
+
+# ==============================================================================
+# TAB 0: PUBLIC LANDING PAGE (When Logged Out)
+# ==============================================================================
+if not is_logged_in and app_mode == "🏠 Welcome & Sign In":
+    st.markdown("""
+    <div class="hero-banner">
+        <div class="hero-title">🛡️ Cyber Threat Intelligence Report Grader</div>
+        <div class="hero-sub">
+            An automated, multi-tier LLM-as-a-Judge academic platform designed to assess executive Threat Intelligence reports against industry tradecraft benchmarks.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("### 📋 The 4 Core Evaluation Pillars (0–25 Pts Each, 100 Total)")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("""
+        <div class="feature-card">
+            <div class="feature-title">1. Structure, Scope & BLUF (25 pts)</div>
+            <p>Opens with a clear <strong>Bottom Line Up Front</strong> executive summary. Explicitly defines reporting period, sectors in/out of scope, and root exposures before technical details.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.write("")
+        st.markdown("""
+        <div class="feature-card">
+            <div class="feature-title">2. Evidence & Sourcing Discipline (25 pts)</div>
+            <p>Every factual claim carries traceable inline citations or numbered appendix references. Distinguishes confirmed incidents from speculation.</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-    app_mode = st.radio("Navigation", nav_options, index=0)
+    with c2:
+        st.markdown("""
+        <div class="feature-card">
+            <div class="feature-title">3. Tradecraft & Estimative Language (25 pts)</div>
+            <p>Employs <strong>ICD 203 estimative probability language</strong> (<em>likely</em>, <em>highly likely</em>) calibrated with explicit confidence levels (<em>high / moderate / low confidence</em>).</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.write("")
+        st.markdown("""
+        <div class="feature-card">
+            <div class="feature-title">4. Business Impact & Actionability (25 pts)</div>
+            <p>Translates cyber threats into operational, financial, and legal business impacts. Delivers prioritized, decision-ready recommendations with named owners.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.write("---")
+    
+    col_login_box, col_info = st.columns([1, 1])
+    with col_login_box:
+        st.markdown("### 🚀 Ready to Submit Your Report?")
+        st.info("Sign in with your Google account (institutional or Gmail) to access the submission portal, track revisions, and receive comprehensive Senior Analyst critiques.")
+        if st.button("🔵 Sign in with Google to Start", type="primary", use_container_width=True):
+            if hasattr(st, "login"):
+                try:
+                    st.login("google")
+                except Exception as e:
+                    st.error(f"Sign in error: {e}")
+            else:
+                st.warning("Native login is configured for Cloud Run deployment.")
+                
+    with col_info:
+        st.markdown("### 📖 Explore Before Signing In")
+        st.write("You can review the full grading rubric, tradecraft failure modes, and gold-standard report structures before submitting.")
+        st.write("👉 Select **'📖 Rubric Reference'** in the sidebar to review the benchmark.")
 
 
 # ==============================================================================
-# TAB 1: SUBMIT & GRADE REPORT (Students + Instructors)
+# TAB 1: SUBMIT & GRADE REPORT (Logged In Students + Instructors)
 # ==============================================================================
-if app_mode == "📝 Submit & Grade Report":
+elif is_logged_in and app_mode == "📝 Submit & Grade Report":
     st.markdown('<div class="main-title">🛡️ Cyber Threat Intelligence Report Grader</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Submit your CTI report to be evaluated on a 100-point scale (4 criteria × 25 pts each). Revisions are tracked automatically by your email.</div>', unsafe_allow_html=True)
 

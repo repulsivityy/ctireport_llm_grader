@@ -37,16 +37,24 @@ gcloud config set project "${PROJECT_ID}" >/dev/null
 grant_iap_access() {
   if [ -z "${ALLOWED_PRINCIPALS}" ]; then
     echo "⚠️  ALLOWED_PRINCIPALS not set - grant IAP access manually, e.g.:"
-    echo "    gcloud run services add-iam-policy-binding ${SERVICE_NAME} --region ${REGION} \\"
-    echo "      --member='group:cti-class@your-domain.edu' --role='roles/iap.httpsResourceAccessor'"
+    echo "    gcloud iap web add-iam-policy-binding --project=${PROJECT_ID} --resource-type=cloud-run --service=${SERVICE_NAME} --region=${REGION} \\"
+    echo "      --member='user:student@example.com' --role='roles/iap.httpsResourceAccessor'"
     return
   fi
-  echo "🔐 Granting roles/iap.httpsResourceAccessor to: ${ALLOWED_PRINCIPALS}"
+  echo "🔐 Granting roles/iap.httpsResourceAccessor on Cloud Run IAP resource (${SERVICE_NAME}): ${ALLOWED_PRINCIPALS}"
   IFS=',' read -ra _PRINCIPALS <<< "${ALLOWED_PRINCIPALS}"
   for principal in "${_PRINCIPALS[@]}"; do
-    gcloud run services add-iam-policy-binding "${SERVICE_NAME}" \
-      --project="${PROJECT_ID}" --region="${REGION}" \
-      --member="$(echo "${principal}" | xargs)" \
+    p="$(echo "${principal}" | xargs)"
+    if [ -z "${p}" ] || [ "${p}" = "user:" ] || [ "${p}" = "group:" ] || [ "${p}" = "domain:" ]; then
+      continue
+    fi
+    echo "   -> Granting to: ${p}"
+    gcloud iap web add-iam-policy-binding \
+      --project="${PROJECT_ID}" \
+      --resource-type=cloud-run \
+      --service="${SERVICE_NAME}" \
+      --region="${REGION}" \
+      --member="${p}" \
       --role="roles/iap.httpsResourceAccessor" >/dev/null
   done
 }
@@ -145,21 +153,22 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
 echo "🪪 Ensuring the IAP service identity exists..."
 gcloud beta services identity create --service=iap.googleapis.com --project="${PROJECT_ID}" >/dev/null 2>&1 || true
 
-# --- Build & deploy (no anonymous access; IAP in front) --------------------
-# The app trusts only the IAP-verified identity, never a form field, to decide
-# who is an instructor.
-echo "🚀 Building and deploying behind IAP..."
+GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}"
+GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}"
+REDIRECT_URI="${REDIRECT_URI:-}"
+
+# --- Build & deploy (Public landing page with Google Sign-In) --------------
+echo "🚀 Building and deploying with public landing page & Google OAuth..."
 gcloud run deploy "${SERVICE_NAME}" \
   --source . \
   --project="${PROJECT_ID}" \
   --region="${REGION}" \
   --platform=managed \
-  --no-allow-unauthenticated \
-  --iap \
+  --allow-unauthenticated \
   --port=8080 \
   --memory=1Gi \
   --cpu=1 \
-  --set-env-vars="^##^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}##FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION}##PRIMARY_MODEL=${PRIMARY_MODEL}##META_MODEL=${META_MODEL}##INSTRUCTOR_EMAILS=${INSTRUCTOR_EMAILS}" \
+  --set-env-vars="^##^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}##FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION}##PRIMARY_MODEL=${PRIMARY_MODEL}##META_MODEL=${META_MODEL}##INSTRUCTOR_EMAILS=${INSTRUCTOR_EMAILS}##GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}##GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}##REDIRECT_URI=${REDIRECT_URI}" \
   --set-secrets="GEMINI_API_KEY=${SECRET_NAME}:latest"
 
 grant_iap_access
@@ -169,9 +178,9 @@ SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --platform managed 
 echo "======================================================"
 echo "🎉 Deployment complete"
 echo "🌐 URL        : ${SERVICE_URL}"
-echo "🔒 Access     : Google IAP only (no anonymous access)"
+echo "🔒 Access     : Public landing page + Google OAuth (Google / Gmail sign-in)"
 echo "👨‍🏫 Instructors: ${INSTRUCTOR_EMAILS}"
-echo "                (must match each user's Google account email as seen by IAP)"
+echo "                (must match the user's Google email to view Gradebook)"
 echo
 echo "Follow-ups you may still need to do once, in the console:"
 echo "  • Configure the OAuth consent screen if this project has never used IAP."

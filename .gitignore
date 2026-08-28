@@ -3,6 +3,8 @@
 *.env
 *.key
 *.pem
+secrets.toml
+.streamlit/
 
 # SQLite Local Database
 *.db
