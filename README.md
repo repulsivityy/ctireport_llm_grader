@@ -47,92 +47,32 @@ since last time" comparison shown above the new scorecard. A student cannot re-g
 
 ---
 
-## 🎯 The brief given to students
+## 🎯 Evaluation Principles
 
-Every submission is treated as a **CTI report written for executives and upper management**.
-Students choose the subject; the grader adapts the *expected section structure* to it:
+Every submission is evaluated as an **executive-level CTI report** prepared for senior organizational decision-makers (Risk Committees, Board of Directors, C-Suite). 
 
-| Report subject | Structure the grader expects |
-| :--- | :--- |
-| **Threat landscape** | What matters now, what changed vs. the prior period, **and an explicit "what is next" / outlook** section |
-| **Vulnerability / CVE assessment** | The vulnerability, our exposure, exploitation status, **and a dedicated Business Impact Assessment** |
-| **Threat actor profile** | Attributed activity, targeting logic, intent, and actionable TTPs |
-| **Incident retrospective** | Timeline, impact, root cause, lessons and follow-up actions |
+Rather than enforcing rigid formatting, the evaluation assesses reports against core tradecraft dimensions:
 
-All subjects are still expected to open with a **BLUF**, state **scope + time window**, cite
-their claims, and use **ICD 203 estimative + confidence language**.
+### 📋 The 4 Core Evaluation Pillars
 
----
+1. **Structure, Scope & Framing**: Clear problem definition, defined operational context and boundaries, and an executive-first narrative progression.
+2. **Evidence & Sourcing Rigor**: Factual claims backed by traceable references, empirical grounding, and disciplined separation between verified data and analyst deduction (unresolved automated search tokens receive formatting hygiene deductions rather than zero-credit).
+3. **Analytic Tradecraft & Reasoning**: Disciplined analytical assertions, calibrated likelihood and confidence for forecasts, transparent intelligence gaps, and context-aware grading (purely factual retrospectives are not penalized for omitting probability terms).
+4. **Executive Actionability & Business Impact**: Translation of technical findings into operational, financial, or regulatory business implications, paired with prioritized, decision-ready mitigation recommendations.
 
-## 🏆 Gold-standard structure
+### 🎯 Reading the Feedback
 
-```markdown
-# 1. Bottom Line Up Front (BLUF) / Executive Summary
-#    core judgement first: the threat, how likely, how confident, the decision requested
-# 2. Scope & Methodology
-#    coverage & exclusions, reporting period, sources + reliability, assumptions, intel gaps
-# 3. Body  (adapts to the subject - see table above)
-#    every factual claim carries a citation (inline URL or numbered appendix reference)
-# 4. Business Impact
-#    operational / financial / regulatory-legal consequences in executive terms
-# 5. Recommendations / Requested Decisions
-#    prioritised, concrete, decision-ready (a budget ask, a policy call)
-# 6. Appendix
-#    numbered source list; IOCs / rules / raw data kept out of the narrative
-```
-
-### Estimative probability & confidence (ICD 203)
-
-Likelihood terms — *almost no chance · very unlikely · unlikely · roughly even chance ·
-likely · very likely · almost certain* — **not** "could / may / might".
-
-A separate **confidence level** — *low / moderate / high* — based on how solid the sourcing
-is, kept distinct from likelihood:
-
-> "We assess it is **very likely** (**high confidence**) that …"
-
-### Citing claims
-
-Either inline:
-
-> Bank A disclosed a ransomware incident in March 2026 — `www.example-news.com/bank-a-breach`
-
-or numbered, resolved in an appendix:
-
-> Bank A disclosed a ransomware incident in March 2026 **[3]**
-> …
-> **[3]** www.example-news.com/bank-a-breach
+There is **no letter grade and no pass/fail** — this platform is designed as an iterative learning tool. The 0–100 score makes progress visible across drafts. Students improve their work by analyzing the per-pillar diagnostic feedback, identified gaps, and revision comparison notes.
 
 ---
 
-## 📋 Scoring — 4 pillars × 25 = 100
+## 🔒 Access Control & User Tracking
 
-| Pillar (internal field) | What earns the marks | Hard caps |
-| :--- | :--- | :--- |
-| **1. Structure, Scope & Completeness** (`clarity_of_scope`) | BLUF present; scope + time window defined; sections complete and appropriate to the subject; appendix present if numbered refs are used | No BLUF → **max 8**. Missing the subject-critical section (e.g. vuln report with no business impact) → **max 10** |
-| **2. Evidence & Sourcing** (`evidence_and_attribution`) | Every factual claim has a traceable citation (inline URL or numbered appendix reference); source confidence characterised | Several uncited material claims → **max 10**. No sourcing mechanism at all → **max 5** |
-| **3. Analytic Tradecraft & Estimative Language** (`methodology`) | ICD 203 likelihood terms; explicit confidence level kept separate from likelihood; methodology, assumptions, intel gaps; consistent throughout | No estimative/confidence language anywhere → **max 8**. Confidence and likelihood conflated → **max 15** |
-| **4. Executive Communication & Actionability** (`actionability`) | Written for leadership; jargon controlled; clear "so what"; prioritised, decision-ready recommendations | Raw technical dump, no exec framing → **max 8**. Recommendations absent or generic ("stay vigilant") → **max 8** |
+The platform provides simple, frictionless access without requiring third-party OAuth setup:
 
-### 🎯 Reading the score
-
-There is **no letter grade and no pass/fail**. The 0–100 number exists only to make
-progress between drafts visible. Students work from the per-pillar explanations, the gaps
-list, and the "what changed" note on each revision. The four pillar scores are summed
-**in Python** — the model never owns the total.
-
----
-
-## 🔒 Authentication & Access Control
-
-The app features a **public-facing landing page** with secure **Google Sign-In (OAuth 2.0 / OIDC)**:
-
-- **Visitors & Students**: Can immediately view the landing page, read the course briefing, and review the **📖 Rubric Reference** without authenticating.
-- **Report Submission**: Clicking **"🔵 Sign in with Google"** authenticates the user via Google Accounts (GAIA / OAuth 2.0).
-  - Supports any Google Workspace account or `@gmail.com` user.
-  - Automatically identifies the student to track their revision attempts, past scores, and progression deltas.
-- **Instructor Gradebook**: The **"📊 Instructor Gradebook"** tab only unlocks if the authenticated Google email matches `INSTRUCTOR_EMAILS`. Students cannot access or tamper with instructor views.
-- **Local Development**: Set `ALLOW_INSECURE_LOCAL_AUTH=true` in `.env` to enable an email input in the sidebar for offline testing.
+- **Visitors & Students**: Can view the landing page and the **📖 Evaluation Overview** without logging in.
+- **Report Submission**: Students enter their email address to access the submission portal. Submissions, scorecards, and iterative revisions are tracked automatically by email.
+- **Instructor Gradebook**: The **"📊 Instructor Gradebook"** tab is protected by an **Instructor PIN** (`INSTRUCTOR_PIN` in `.env`, defaulting to `cti-instructor-2026`). Authorized instructors can inspect all student submissions, view Tier 1 vs Tier 2 score breakdowns, and monitor class metrics.
 
 ---
 
@@ -146,9 +86,7 @@ cp .env.example .env
 Ensure the following are set:
 - `GEMINI_API_KEY`: Your Google GenAI API key.
 - `GOOGLE_CLOUD_PROJECT`: Your GCP project ID (e.g. `virustotal-lab`).
-- `INSTRUCTOR_EMAILS`: Comma-separated list of instructor Google emails.
-- `GOOGLE_CLIENT_ID` & `GOOGLE_CLIENT_SECRET`: OAuth 2.0 Web Client credentials from GCP Console (`APIs & Services > Credentials`).
-- `REDIRECT_URI`: `https://<YOUR-CLOUD-RUN-SERVICE-URL>/oauth2callback`
+- `INSTRUCTOR_PIN`: Secret passcode to unlock the Instructor Gradebook (e.g. `cti-instructor-2026`).
 
 ### 2. Deploy
 ```bash

@@ -137,18 +137,23 @@ with correct-sounding claims and no citations or estimative language scores poor
      accurate - only that a specific, traceable source is attached to each claim.
    - Caps: several material claims with no citation => max 10. No sourcing mechanism
      at all (no inline links or URLs, no appendix reference list) => max 5.
+   - Raw search tokens / unexpanded markers (e.g. '【turn0search0】', '[search:1]'):
+     The author clearly attempted claim-level attribution, but left automated search tokens
+     unresolved. Deduct for formatting hygiene and traceability (band in 12–16 range),
+     but do NOT treat this as 'no sourcing mechanism at all' (do NOT apply the max 5 cap).
 
 3. **Analytic Tradecraft & Estimative Language** (field: methodology) [0-25]
-   - Uses ICD 203 estimative probability terms (almost no chance / very unlikely /
-     unlikely / roughly even chance / likely / very likely / almost certain) instead
-     of vague "could / may / might".
-   - States a confidence level (low / moderate / high) and keeps it distinct from
-     likelihood - does not conflate the two.
-   - States methodology, key assumptions and intelligence gaps; considers alternative
-     explanations where relevant; avoids single-source certainty and nation-state hype.
-   - Applied consistently throughout, not just once in the summary.
-   - Caps: no estimative or confidence language anywhere => max 8. Confidence and
-     likelihood conflated or used interchangeably => max 15.
+   - For forward-looking assessments, forecasts, or unconfirmed attribution: uses ICD 203
+     estimative probability terms (almost no chance / unlikely / likely / very likely / almost certain)
+     calibrated with explicit, separate confidence levels (low / moderate / high).
+   - For purely factual reporting, media retrospectives, or confirmed incident summaries:
+     ICD 203 probability terms are NOT required for established historical facts. Grade methodology
+     on sourcing objectivity, disciplined separation of verified facts from speculation, and
+     acknowledgement of collection gaps.
+   - States methodology, key assumptions, and intelligence gaps; avoids single-source certainty and hype.
+   - Caps: for reports requiring forecasts/uncertain assessments, no estimative language => max 8.
+     Confidence and likelihood conflated => max 15.
+     CAP EXEMPTION: Do NOT apply the max 8 cap to purely factual summaries or historical event reporting.
 
 4. **Executive Communication & Actionability** (field: actionability) [0-25]
    - Written for executives / upper management: business framing, jargon explained or
@@ -234,6 +239,16 @@ reading differs from the Level 1 notes, say so explicitly in that pillar's expla
 ("L1 noted X; I found Y - <quote>"). Verify the hard caps were identified correctly and
 apply any the Level 1 notes missed.
 
+### CONTEXTUAL TRADECRAFT AUDIT (ESTIMATIVE LANGUAGE):
+- Determine if the report is forward-looking or a confirmed factual retrospective / media summary.
+- If the report is purely factual reporting of established events or confirmed media disclosures,
+  do NOT penalize it for omitting ICD 203 probability language.
+- Explicitly override Level 1 if Level 1 rigidly applied the estimative language cap (max 8)
+  to a purely factual report. Grade methodology on sourcing rigor and objectivity instead.
+- If the report cites claims using raw automated search tokens (e.g., '【turn0search0】'), penalize
+  for citation formatting hygiene, but do NOT treat this as 'no sourcing' (do not apply max 5).
+  Score proportionally in the moderate 12–16 range, acknowledging the attribution structure.
+
 ### GOLD STANDARD BENCHMARK
 {GOLD_STANDARD_EXEMPLAR}
 {RUBRIC}
@@ -309,7 +324,8 @@ class CTIGrader:
     def _safe(fn):
         try:
             return fn()
-        except Exception:  # noqa: BLE001 - a failed tier degrades silently
+        except Exception as e:
+            print(f"[CTIGrader Error] Tier execution failed: {type(e).__name__}: {e}")
             return None
 
     def _normalise_pillars(self, raw: dict, what: str) -> None:
@@ -384,6 +400,8 @@ class CTIGrader:
         report_text: str,
         previous_attempt: "Optional[SubmissionRecord]" = None,
         dual_review: bool = True,
+        report_language: str = "English",
+        feedback_language: str = "English",
     ) -> MultiStageGradingResult:
         """
         Two-tier LLM-as-judge that degrades silently:
@@ -393,13 +411,20 @@ class CTIGrader:
           - both fail      -> raises EvaluationUnavailable (nothing is saved)
         Each tier is tried twice before it is considered failed.
         """
-        level1 = self._safe(lambda: self._evaluate_level_1(student_name, report_text))
+        errs = []
+        try:
+            level1 = self._evaluate_level_1(student_name, report_text, report_language, feedback_language)
+        except Exception as e:
+            errs.append(f"Tier 1 [{self.primary_model}]: {type(e).__name__}: {e}")
+            level1 = None
 
         adjudication = None
         if dual_review:
-            adjudication = self._safe(
-                lambda: self._evaluate_final(student_name, report_text, level1, previous_attempt)
-            )
+            try:
+                adjudication = self._evaluate_final(student_name, report_text, level1, previous_attempt, report_language, feedback_language)
+            except Exception as e:
+                errs.append(f"Tier 2 [{self.final_model}]: {type(e).__name__}: {e}")
+                adjudication = None
 
         if adjudication is not None:
             final_result, integrity = self._finalize(student_name, level1, adjudication)
@@ -419,9 +444,9 @@ class CTIGrader:
             integrity = None
             final_model_used = self.primary_model
         else:
+            err_details = " \n\n• ".join(errs) if errs else "Unknown error"
             raise EvaluationUnavailable(
-                "The evaluation service is temporarily unavailable (both passes failed). "
-                "Your report was not graded or saved - please try again shortly."
+                f"The evaluation service could not complete grading:\n\n• {err_details}"
             )
 
         score_deltas: dict = {}
@@ -444,11 +469,23 @@ class CTIGrader:
         )
 
     # --------------------------------------------------------------- tier 1
-    def _evaluate_level_1(self, student_name: str, report_text: str) -> Level1Assessment:
+    def _evaluate_level_1(self, student_name: str, report_text: str, report_language: str = "English", feedback_language: str = "English") -> Level1Assessment:
+        target_lang = "the language of the submission (auto-detect)" if report_language == "Other" else report_language
+        out_lang = target_lang if feedback_language == "Match Report Language" else feedback_language
+
+        language_instruction = f"""
+### LANGUAGE HANDLING & NON-ENGLISH REPORTS
+- The report is written in {target_lang}. Apply the rubric equally regardless of the submission language.
+- For non-English reports, recognize standard translated equivalents of ICD 203 estimative probability and confidence expressions in {target_lang}. Do NOT penalize or cap methodology simply because the author used native/translated terms rather than English words.
+- Provide all of your output (explanations, checklist findings, critique) in {out_lang}.
+- Verbatim quotes (e.g., estimative_language_quotes, structure evidence) MUST remain in the original language as written.
+"""
         prompt = f"""Student Name: {student_name}
 
 Perform the LEVEL 1 review of the executive CTI report below: infer the subject, run
 the structure checklist, score the four pillars, and pull the requested evidence quotes.
+
+{language_instruction}
 
 <student_submission>
 {report_text}
@@ -476,10 +513,22 @@ the structure checklist, score the four pillars, and pull the requested evidence
         report_text: str,
         level1: Optional[Level1Assessment],
         previous_attempt: "Optional[SubmissionRecord]" = None,
+        report_language: str = "English",
+        feedback_language: str = "English",
     ) -> FinalAdjudication:
+        target_lang = "the language of the submission (auto-detect)" if report_language == "Other" else report_language
+        out_lang = target_lang if feedback_language == "Match Report Language" else feedback_language
+
+        language_instruction = f"""
+### LANGUAGE HANDLING & NON-ENGLISH REPORTS
+- The report is written in {target_lang}. Apply the rubric equally regardless of the submission language.
+- For non-English reports, recognize standard translated equivalents of ICD 203 estimative probability and confidence expressions in {target_lang}. Do NOT penalize or cap methodology simply because the author used native/translated terms rather than English words.
+- Ensure all your qualitative feedback (`overall_critique`, `gaps_and_missing_elements`, `questions_for_author`, `progress_note`, and pillar explanations) is written in {out_lang}.
+- Any extracted verbatim quotes or citations MUST remain in the original language as written.
+"""
         parts = [
             f"Student Name: {student_name}",
-            "",
+            language_instruction,
             "<student_submission>",
             report_text,
             "</student_submission>",

@@ -24,6 +24,7 @@ PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || echo 
 FIRESTORE_COLLECTION="${FIRESTORE_COLLECTION:-cti_submissions}"
 SECRET_NAME="${SECRET_NAME:-GEMINI_API_KEY}"
 INSTRUCTOR_EMAILS="${INSTRUCTOR_EMAILS:-}"
+INSTRUCTOR_PIN="${INSTRUCTOR_PIN:-cti-instructor-2026}"
 PRIMARY_MODEL="${PRIMARY_MODEL:-gemini-3.5-flash-lite}"
 META_MODEL="${META_MODEL:-gemini-3.7-flash}"
 ALLOWED_PRINCIPALS="${ALLOWED_PRINCIPALS:-}"
@@ -165,10 +166,11 @@ gcloud run deploy "${SERVICE_NAME}" \
   --region="${REGION}" \
   --platform=managed \
   --allow-unauthenticated \
+  --no-iap \
   --port=8080 \
   --memory=1Gi \
   --cpu=1 \
-  --set-env-vars="^##^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}##FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION}##PRIMARY_MODEL=${PRIMARY_MODEL}##META_MODEL=${META_MODEL}##INSTRUCTOR_EMAILS=${INSTRUCTOR_EMAILS}##GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}##GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}##REDIRECT_URI=${REDIRECT_URI}" \
+  --set-env-vars="^##^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}##FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION}##PRIMARY_MODEL=${PRIMARY_MODEL}##META_MODEL=${META_MODEL}##INSTRUCTOR_EMAILS=${INSTRUCTOR_EMAILS}##INSTRUCTOR_PIN=${INSTRUCTOR_PIN}##GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}##GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}##REDIRECT_URI=${REDIRECT_URI}" \
   --set-secrets="GEMINI_API_KEY=${SECRET_NAME}:latest"
 
 grant_iap_access
@@ -178,13 +180,6 @@ SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --platform managed 
 echo "======================================================"
 echo "🎉 Deployment complete"
 echo "🌐 URL        : ${SERVICE_URL}"
-echo "🔒 Access     : Public landing page + Google OAuth (Google / Gmail sign-in)"
-echo "👨‍🏫 Instructors: ${INSTRUCTOR_EMAILS}"
-echo "                (must match the user's Google email to view Gradebook)"
-echo
-echo "Follow-ups you may still need to do once, in the console:"
-echo "  • Configure the OAuth consent screen if this project has never used IAP."
-echo "  • (Optional hardening) verify the signed IAP JWT instead of trusting the"
-echo "    identity header: set IAP_JWT_AUDIENCE (see"
-echo "    https://cloud.google.com/iap/docs/signed-headers-howto) and redeploy."
+echo "🔒 Access     : Direct Email Entry (No Google OAuth setup needed)"
+echo "🔑 Instructor : Protected by PIN ('${INSTRUCTOR_PIN}')"
 echo "======================================================"
