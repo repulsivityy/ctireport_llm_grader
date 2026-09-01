@@ -26,22 +26,22 @@ PILLAR_FIELDS = (
 
 # The functions a strong executive CTI report performs. Tier 1 runs a presence
 # check against exactly these; the labels are stable so the checklist reads the
-# same across submissions and can be shown to students as a structural prompt.
-# Each function names the pillar it primarily feeds.
+# same across every submission and can be shown to students as a structural map.
+# _evaluate_level_1 reconciles the model's output against this tuple.
 REPORT_FUNCTIONS = (
-    ("Frames the problem and defines scope", "clarity_of_scope"),
-    ("Leads with the core judgement and the decision requested", "clarity_of_scope"),
-    ("Links material claims to a source the reader can go to", "evidence_and_attribution"),
-    ("Separates sourced fact from analyst inference", "evidence_and_attribution"),
-    ("Shows the reasoning from evidence to judgement", "methodology"),
-    ("Handles uncertainty with a calibrated, consistent scheme", "methodology"),
-    ("Surfaces key assumptions and intelligence gaps", "methodology"),
-    ("Draws out what matters most and its business impact", "actionability"),
-    ("Gives the reader something to decide or do", "actionability"),
+    "Frames the problem and defines scope",
+    "Leads with the core judgement and the decision requested",
+    "Links material claims to a source the reader can go to",
+    "Separates sourced fact from analyst inference",
+    "Shows the reasoning from evidence to judgement",
+    "Handles uncertainty with a calibrated, consistent scheme",
+    "Surfaces key assumptions and intelligence gaps",
+    "Draws out what matters most and its business impact",
+    "Gives the reader something to decide or do",
 )
 
 _FUNCTION_CHECKLIST_SPEC = "\n".join(
-    f'  {i}. "{label}"' for i, (label, _pillar) in enumerate(REPORT_FUNCTIONS, 1)
+    f'  {i}. "{label}"' for i, label in enumerate(REPORT_FUNCTIONS, 1)
 )
 
 
@@ -174,8 +174,11 @@ report that otherwise performs the function are highlighted, never penalised.
 1. **Framing, Scope & Coherence** (field: clarity_of_scope) [0-25]
    - The report makes clear what question it answers and whose decision it serves.
    - Scope is defined: subject, reporting period / time window, what is in and out.
-   - The core judgement and the requested decision appear early, before the detail
-     (any heading, or none - grade the placement, not the label).
+   - The reader can find the core judgement and the requested decision without
+     hunting for them - stated up front, or clearly signposted and not buried in the
+     middle of the detail. A build-to-the-conclusion structure is fine as long as
+     the judgement, when it lands, is unmistakable. Grade the placement, not the
+     heading or the house style.
    - The report reads as one connected argument: judgement, evidence, implications
      and recommendations line up. Where findings, implications and recommendations
      don't connect, note the disconnect in the inconsistencies / gaps list - score
@@ -183,7 +186,8 @@ report that otherwise performs the function are highlighted, never penalised.
    - The subject's own demands are met in some form: a vulnerability report gets to
      "our exposure and what breaks"; a threat-landscape report gets to a
      forward-looking outlook; a threat-actor report gets to targeting, intent and
-     TTPs at a level an executive can use.
+     TTPs at a level an executive can use. If you are unsure what subject the author
+     was writing to, do not hold the report to a subject it was not attempting.
    - CAP (structural): the report never lands a clear core judgement or a clear ask
      - the reader cannot tell what they are meant to conclude or do => max 10.
 
@@ -200,8 +204,9 @@ report that otherwise performs the function are highlighted, never penalised.
      the author is not blurring fact and speculation.
    - Raw search tokens / unexpanded markers (e.g. '【turn0search0】', '[search:1]'):
      the author attempted claim-level attribution but left automated tokens
-     unresolved. Note it as a traceability gap and keep the pillar in a moderate
-     band (around 12-16); do NOT treat this as "no source attribution at all".
+     unresolved. The attribution function IS present - the reader just cannot follow
+     the tokens. Highlight it in gaps_and_missing_elements as a traceability fix;
+     do NOT apply the cap and do NOT band the pillar down for it on its own.
    - CAP (structural): no source-attribution mechanism anywhere - no inline links or
      URLs, no footnotes, no reference list, no named sources => max 6.
 
@@ -245,11 +250,14 @@ report that otherwise performs the function are highlighted, never penalised.
 - Named reassessment triggers or indicators to watch.
 
 ### BANDING - how completely the function is built into the report
+Judge the function as a whole. Do NOT subtract a band per slip, per uncited claim,
+or per inconsistency - those are highlights, not deductions.
 - 21-25: the function is a deliberate, well-constructed part of the report. Isolated
   gaps or inconsistencies may exist; note them, do not band down for them.
-- 14-20: the function is present and recognisable but only partly built out
-  (e.g. scope stated but no time window; a calibration scheme used up front then
-  dropped; recommendations present but not prioritised).
+- 14-20: the function is only half-built - the author starts it but does not carry
+  it through (scope is asserted but never actually bounded; uncertainty is calibrated
+  in the summary but the body reverts to bare assertion; recommendations are listed
+  but not shaped into anything a decision-maker can act on).
 - 7-13: the function is gestured at but not really constructed.
 - 0-6: absent or token.
 """
@@ -260,7 +268,7 @@ report that otherwise performs the function are highlighted, never penalised.
 SYSTEM_INSTRUCTION_LEVEL1 = f"""
 You are the LEVEL 1 assessor of a student's executive CTI report. You are NOT the final
 grader and you are NOT responsible for the security review - a second evaluator audits
-your work and handles report integrity. Your job is structure, completeness, scoring,
+your work and handles report integrity. Your job is structure, function coverage, scoring,
 and gathering evidence the final evaluator can act on.
 
 ### WHAT A STRONG REPORT DOES
@@ -353,8 +361,9 @@ scale) than the reference, as long as the functions are performed.
   to a purely factual report. Grade methodology on visible reasoning and fact/
   speculation separation instead.
 - If the report links claims using raw automated search tokens (e.g., '【turn0search0】'),
-  note it as a traceability gap, but do NOT treat this as 'no source attribution'
-  (do not apply the max 6 cap). Keep the pillar in the moderate 12-16 band.
+  the attribution function is present but not followable: highlight it in
+  gaps_and_missing_elements as a traceability fix. Do NOT apply the max 6 cap and do
+  NOT band the pillar down for the unresolved tokens on their own.
 
 ### WHAT A STRONG REPORT DOES
 {STRONG_REPORT_REFERENCE}
@@ -594,7 +603,7 @@ class CTIGrader:
         prompt = f"""Student Name: {student_name}
 
 Perform the LEVEL 1 review of the executive CTI report below: infer the subject, run
-the structure checklist, score the four pillars, and pull the requested evidence quotes.
+the function checklist, score the four pillars, and pull the requested evidence quotes.
 
 {language_instruction}
 
@@ -614,8 +623,37 @@ the structure checklist, score the four pillars, and pull the requested evidence
         if not raw.get("report_type"):
             raw["report_type"] = "General CTI Briefing"
         raw.pop("letter_grade", None)
+        raw["structure_checklist"] = self._reconcile_function_checklist(raw.get("structure_checklist"))
         raw["total_score"] = sum(raw[field]["score"] for field in PILLAR_FIELDS)
         return Level1Assessment(**raw)
+
+    @staticmethod
+    def _reconcile_function_checklist(items) -> list:
+        """Force the checklist to exactly REPORT_FUNCTIONS, in order, so the
+        student-facing map is identical across submissions. A function the model
+        omitted is treated as not demonstrated."""
+        by_label = {}
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("element", "")).strip().lower()
+            if key and key not in by_label:
+                by_label[key] = item
+        reconciled = []
+        for label in REPORT_FUNCTIONS:
+            match = by_label.get(label.lower())
+            if match is None:
+                # fall back to a loose contains-match before giving up
+                match = next(
+                    (v for k, v in by_label.items() if k in label.lower() or label.lower() in k),
+                    None,
+                )
+            reconciled.append({
+                "element": label,
+                "present": bool(match.get("present")) if match else False,
+                "evidence": (match.get("evidence") if match else "") or ("" if match else "not found"),
+            })
+        return reconciled
 
     # --------------------------------------------------------------- tier 2
     def _evaluate_final(
@@ -710,7 +748,10 @@ the structure checklist, score the four pillars, and pull the requested evidence
     ) -> Tuple[GradingResult, IntegrityReview]:
         integrity = adj.integrity
 
-        # A deliberate manipulation attempt is an analytic-integrity failure -> tradecraft cap.
+        # A deliberate manipulation attempt is an analytic-integrity failure. This cap is an
+        # anti-abuse measure that sits DELIBERATELY OUTSIDE the "highlight, don't deduct" rubric
+        # (and below its max-10 structural caps) - it is the one place a submission's content
+        # lowers a score for something other than a missing function.
         if integrity.severity == "high" and adj.methodology.score > 8:
             adj.methodology.score = 8
             if self._INJECTION_CAP not in adj.methodology.caps_applied:

@@ -49,15 +49,15 @@ class Level1Assessment(BaseModel):
     actionability: CriterionScore
     estimative_language_quotes: List[str] = Field(
         default_factory=list,
-        description="Verbatim snippets showing ICD 203 estimative probability language in the report."
+        description="Verbatim snippets showing calibrated likelihood/confidence language in any scheme (ICD 203 terms, numeric probability bands, PHIA, or a consistent house scale)."
     )
     vague_language_quotes: List[str] = Field(
         default_factory=list,
-        description="Verbatim snippets showing vague hedging ('could', 'may', 'might') where an estimative term was expected."
+        description="Verbatim snippets showing vague hedging ('could', 'may', 'might', 'possibly') with no calibration scheme behind it, where a calibrated likelihood/confidence expression was expected."
     )
     uncited_claim_quotes: List[str] = Field(
         default_factory=list,
-        description="Verbatim snippets of factual claims that carry no inline citation or numbered reference."
+        description="Verbatim snippets of material claims that are not linked to any source (no inline link, footnote, or numbered reference)."
     )
     internal_inconsistencies: List[str] = Field(
         default_factory=list,

@@ -210,13 +210,13 @@ if not is_logged_in and app_mode == "🏠 Welcome & Sign In":
     <div class="hero-banner">
         <div class="hero-title">🛡️ Cyber Threat Intelligence Report Grader</div>
         <div class="hero-sub">
-            A workshop evaluation platform designed to assess executive Threat Intelligence reports against industry tradecraft benchmarks.
+            A workshop tool that helps you build executive Threat Intelligence reports in a more structured way — it checks how your report is put together, not whether its facts are right.
         </div>
     </div>
     """, unsafe_allow_html=True)
     
     st.markdown("### 📋 Core Evaluation Dimensions")
-    st.markdown("Reports are assessed across four essential intelligence tradecraft dimensions:")
+    st.markdown("Reports are assessed on whether they perform four core functions — in whatever structure you choose:")
     
     c1, c2 = st.columns(2)
     with c1:
@@ -320,8 +320,10 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
     st.info(
         "📌 **All submissions are graded as an executive CTI report** (audience: executives / "
         "upper management). The subject is up to you — threat landscape, vulnerability assessment, "
-        "threat actor profile, incident retrospective — and the grader adapts the expected section "
-        "structure to your subject. See **📖 Evaluation Overview** for how reports are assessed."
+        "threat actor profile, incident retrospective — and so is the structure. There is no "
+        "required format: the grader checks whether your report performs a set of functions, in "
+        "whatever sections and order you choose. See **📖 Evaluation Overview** for how reports "
+        "are assessed."
     )
     st.info("📌 **Accepted Formats:** PDF (`.pdf`), Markdown (`.md`), or Plain Text (`.txt`). *(Word `.docx` is not accepted)*")
     
@@ -558,9 +560,10 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
             st.write("---")
             st.markdown("### 🧭 Function Check — what your report does")
             st.caption(
-                "A structural map, not a score. Every strong executive report performs these "
-                "functions — in whatever structure or section order you choose. Missing ones are "
-                "the fastest place to strengthen your next draft."
+                "A first-pass structural read, not a score. Every strong executive report performs "
+                "these functions — in whatever structure or section order you choose. Missing ones "
+                "are the fastest place to strengthen your next draft; check them against the pillar "
+                "feedback above."
             )
             fc_col1, fc_col2 = st.columns(2)
             for fc_idx, fc_item in enumerate(_l1.structure_checklist):
@@ -579,13 +582,21 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
         st.write("---")
         diag_col1, diag_col2 = st.columns(2)
 
+        _single_pass = not res.gaps_and_missing_elements and not res.questions_for_author
+
         with diag_col1:
             st.markdown("#### ⚠️ Key Areas for Refinement")
             if res.gaps_and_missing_elements:
                 for gap in res.gaps_and_missing_elements:
                     st.warning(f"• {gap}")
+            elif _single_pass:
+                st.info(
+                    "A lighter single-pass review ran for this draft, so the detailed gap list and "
+                    "author questions aren't available. Use the pillar feedback and the Function "
+                    "Check below, and resubmit for a full review."
+                )
             else:
-                st.success("✅ No major structural, sourcing, or tradecraft gaps detected.")
+                st.success("✅ No major structural, sourcing, or reasoning gaps flagged for this draft.")
 
             if getattr(res, "internal_inconsistencies", None):
                 st.markdown("**🔀 Internal inconsistencies to reconcile** _(highlighted for revision, not scored)_")
@@ -598,12 +609,15 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
 
         with diag_col2:
             st.markdown("#### ❓ Socratic Questions for the Author")
-            for i, q in enumerate(res.questions_for_author, 1):
-                st.markdown(f"""
-                <div class="author-question-box">
-                    <strong>Question {i}:</strong> {html.escape(str(q))}
-                </div>
-                """, unsafe_allow_html=True)
+            if res.questions_for_author:
+                for i, q in enumerate(res.questions_for_author, 1):
+                    st.markdown(f"""
+                    <div class="author-question-box">
+                        <strong>Question {i}:</strong> {html.escape(str(q))}
+                    </div>
+                    """, unsafe_allow_html=True)
+            elif _single_pass:
+                st.caption("Not generated on a single-pass review — resubmit for the full evaluation.")
 
 
 # ==============================================================================
