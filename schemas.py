@@ -7,15 +7,15 @@ class CriterionScore(BaseModel):
         ...,
         ge=0,
         le=25,
-        description="Score from 0 to 25 based on the completeness / structure / tradecraft rubric for this pillar."
+        description="Score from 0 to 25 for how completely this pillar's function is built into the report. Individual flaws are highlighted for revision, not deducted."
     )
     explanation: str = Field(
         ...,
-        description="Clear explanation justifying the score: what the report did, what was missing, and which rubric caps (if any) were applied."
+        description="Clear explanation justifying the score: whether the function is present and constructed, and which structural cap (if any) was applied."
     )
     caps_applied: List[str] = Field(
         default_factory=list,
-        description="Names of the rubric hard-caps applied to this pillar, if any (e.g. 'no BLUF -> max 8')."
+        description="Names of the structural caps applied to this pillar, if any (e.g. 'no clear judgement or ask -> max 10')."
     )
 
 
@@ -59,6 +59,12 @@ class Level1Assessment(BaseModel):
         default_factory=list,
         description="Verbatim snippets of factual claims that carry no inline citation or numbered reference."
     )
+    internal_inconsistencies: List[str] = Field(
+        default_factory=list,
+        description="Verbatim snippets where the report contradicts itself (e.g. BLUF states high "
+        "confidence, body states low; a finding with no matching recommendation). Highlighted for "
+        "the author; NOT a scoring input."
+    )
     overall_critique: str = Field(..., description="Level 1 reviewer's summary of the report.")
 
     # Filled by the platform, not the model.
@@ -92,6 +98,11 @@ class FinalAdjudication(BaseModel):
     methodology: CriterionScore
     actionability: CriterionScore
     gaps_and_missing_elements: List[str] = Field(default_factory=list)
+    internal_inconsistencies: List[str] = Field(
+        default_factory=list,
+        description="Verbatim snippets where the report contradicts itself. Highlighted for the "
+        "author; NOT a scoring input."
+    )
     questions_for_author: List[str] = Field(default_factory=list)
     overall_critique: str
     progress_note: Optional[str] = Field(
@@ -111,15 +122,19 @@ class GradingResult(BaseModel):
         default="General CTI Briefing",
         description="Short label for the report's subject, inferred from the content."
     )
-    clarity_of_scope: CriterionScore = Field(..., description="Structure, Scope & Completeness (0-25).")
-    evidence_and_attribution: CriterionScore = Field(..., description="Evidence & Sourcing (0-25). Does NOT assess whether cited facts are true.")
-    methodology: CriterionScore = Field(..., description="Analytic Tradecraft & Estimative Language (0-25).")
-    actionability: CriterionScore = Field(..., description="Executive Communication & Actionability (0-25).")
+    clarity_of_scope: CriterionScore = Field(..., description="Framing, Scope & Coherence (0-25).")
+    evidence_and_attribution: CriterionScore = Field(..., description="Source Attribution & Evidence (0-25). Checks that claims are linked to a source; does NOT assess whether the source is accurate or reliable.")
+    methodology: CriterionScore = Field(..., description="Analytic Reasoning & Uncertainty (0-25).")
+    actionability: CriterionScore = Field(..., description="Executive Value & Actionability (0-25).")
     total_score: int = Field(..., ge=0, le=100, description="Sum of the 4 pillar scores (0-100).")
     percentage_score: float = Field(..., ge=0.0, le=100.0, description="Percentage score (0-100%).")
     gaps_and_missing_elements: List[str] = Field(
         default_factory=list,
-        description="Specific structural gaps, missing sections, uncited claims, or absent estimative/confidence language. Not a judgement of factual accuracy."
+        description="Specific structural gaps, missing functions, claims not linked to a source, or absent calibrated uncertainty language. Highlighted for revision, not a per-item score penalty; not a judgement of factual accuracy."
+    )
+    internal_inconsistencies: List[str] = Field(
+        default_factory=list,
+        description="Verbatim snippets where the report contradicts itself. Highlighted for the author; not a scoring input."
     )
     questions_for_author: List[str] = Field(
         default_factory=list,

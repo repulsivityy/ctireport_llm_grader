@@ -222,30 +222,30 @@ if not is_logged_in and app_mode == "🏠 Welcome & Sign In":
     with c1:
         st.markdown("""
         <div class="feature-card">
-            <div class="feature-title">Scope & Executive Framing</div>
-            <p>Assesses the report's framing for leadership: clear problem definition, appropriate scope, and executive relevance.</p>
+            <div class="feature-title">Framing, Scope & Coherence</div>
+            <p>Does the report frame the problem, define its scope, lead with the judgement, and hang together as one connected argument?</p>
         </div>
         """, unsafe_allow_html=True)
         st.write("")
         st.markdown("""
         <div class="feature-card">
-            <div class="feature-title">Evidence & Sourcing Rigor</div>
-            <p>Assesses the grounding of factual claims: traceable sourcing, data integrity, and evidence discipline.</p>
+            <div class="feature-title">Source Attribution & Evidence</div>
+            <p>Are the report's material claims linked to a source the reader can go to? We check that a reference is attached — not whether the source is accurate.</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
     with c2:
         st.markdown("""
         <div class="feature-card">
-            <div class="feature-title">Analytical Tradecraft</div>
-            <p>Assesses analytical depth: disciplined reasoning, sound handling of uncertainty, and intellectual rigor.</p>
+            <div class="feature-title">Analytic Reasoning & Uncertainty</div>
+            <p>Is the path from evidence to judgement visible, and is uncertainty expressed in a calibrated, consistent scheme with assumptions and gaps surfaced?</p>
         </div>
         """, unsafe_allow_html=True)
         st.write("")
         st.markdown("""
         <div class="feature-card">
-            <div class="feature-title">Actionability & Impact</div>
-            <p>Assesses the strategic translation of threat activity into organizational context and concrete mitigation priorities.</p>
+            <div class="feature-title">Executive Value & Actionability</div>
+            <p>Does the report give leadership something to decide or do, framed in business terms, with prioritised and concrete recommendations?</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -299,7 +299,7 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
                         <span style="font-size: 1.3rem; font-weight:700; color:#0284C7;">{att.total_score} / 100</span><br>
                         <small style="color:#475569;"><strong>{html.escape(att.report_type)}</strong></small><br>
                         <small style="color:#64748B;">{html.escape(att.timestamp)}</small><br>
-                        <small>Structure: {att.clarity_of_scope_score}/25 | Sourcing: {att.evidence_and_attribution_score}/25<br>Tradecraft: {att.methodology_score}/25 | Exec/Action: {att.actionability_score}/25</small>
+                        <small>Framing: {att.clarity_of_scope_score}/25 | Sourcing: {att.evidence_and_attribution_score}/25<br>Reasoning: {att.methodology_score}/25 | Exec/Action: {att.actionability_score}/25</small>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -528,10 +528,10 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
         st.markdown("### 📋 The 4 Evaluation Pillars (0–25 Pts Each)")
 
         criteria_list = [
-            ("1. Structure, Scope & Framing", res.clarity_of_scope),
-            ("2. Evidence & Sourcing Rigor", res.evidence_and_attribution),
-            ("3. Analytic Tradecraft & Reasoning", res.methodology),
-            ("4. Executive Communication & Actionability", res.actionability),
+            ("1. Framing, Scope & Coherence", res.clarity_of_scope),
+            ("2. Source Attribution & Evidence", res.evidence_and_attribution),
+            ("3. Analytic Reasoning & Uncertainty", res.methodology),
+            ("4. Executive Value & Actionability", res.actionability),
         ]
 
         p_col1, p_col2 = st.columns(2)
@@ -562,6 +562,15 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
                     st.warning(f"• {gap}")
             else:
                 st.success("✅ No major structural, sourcing, or tradecraft gaps detected.")
+
+            if getattr(res, "internal_inconsistencies", None):
+                st.markdown("**🔀 Internal inconsistencies to reconcile** _(highlighted for revision, not scored)_")
+                for inc in res.internal_inconsistencies:
+                    st.markdown(f"""
+                    <div style="background: #FEF9C3; border-left: 3px solid #CA8A04; padding: 6px 10px; margin: 4px 0; font-size: 0.9rem; color: #713F12;">
+                        {html.escape(str(inc))}
+                    </div>
+                    """, unsafe_allow_html=True)
 
         with diag_col2:
             st.markdown("#### ❓ Socratic Questions for the Author")
@@ -631,10 +640,10 @@ elif app_mode == "📊 Instructor Gradebook":
                 st.warning(f"⚙️ Pipeline note: {selected_sub.result.evaluation_note}")
 
             _PILLAR_LABELS = [
-                ("clarity_of_scope", "Structure, Scope & Completeness"),
-                ("evidence_and_attribution", "Evidence & Sourcing"),
-                ("methodology", "Analytic Tradecraft & Estimative Language"),
-                ("actionability", "Executive Communication & Actionability"),
+                ("clarity_of_scope", "Framing, Scope & Coherence"),
+                ("evidence_and_attribution", "Source Attribution & Evidence"),
+                ("methodology", "Analytic Reasoning & Uncertainty"),
+                ("actionability", "Executive Value & Actionability"),
             ]
 
             insp_tab1, insp_tab2, insp_tab3, insp_tab4 = st.tabs([
@@ -669,6 +678,10 @@ elif app_mode == "📊 Instructor Gradebook":
                     st.markdown("**Gaps & missing elements:**")
                     for g in gr.gaps_and_missing_elements:
                         st.write(f"- {g}")
+                if getattr(gr, "internal_inconsistencies", None):
+                    st.markdown("**Internal inconsistencies (highlighted, not scored):**")
+                    for inc in gr.internal_inconsistencies:
+                        st.write(f"> {inc}")
                 if gr.questions_for_author:
                     st.markdown("**Questions for author:**")
                     for idx, q in enumerate(gr.questions_for_author, 1):
@@ -690,6 +703,7 @@ elif app_mode == "📊 Instructor Gradebook":
                     ("Estimative-language quotes", l1.estimative_language_quotes),
                     ("Vague-language quotes", l1.vague_language_quotes),
                     ("Uncited-claim quotes", l1.uncited_claim_quotes),
+                    ("Internal inconsistencies (not scored)", getattr(l1, "internal_inconsistencies", [])),
                 ]:
                     if quotes:
                         st.markdown(f"**{heading}:**")
@@ -744,31 +758,35 @@ elif app_mode in ("📖 Evaluation Overview", "📖 Rubric Reference"):
 
     st.markdown("""
     ### 🎯 Purpose & Audience
-    Every submission is evaluated as a **Cyber Threat Intelligence report prepared for organisational leadership** (e.g., Executive Risk Committee, Board, C-Suite). 
+    Every submission is evaluated as a **Cyber Threat Intelligence report prepared for organisational leadership** (e.g., Executive Risk Committee, Board, C-Suite).
 
-    The focus of the evaluation is on analytical rigor, clarity of communication, and decision utility for senior stakeholders.
+    This is a **thinking aid**, not a template checker. The goal is to encourage you to think bigger and build reports in a more structured way. There is **no single required format** — any structure that performs the functions below is fine, whatever your sections are called. We do **not** check whether your facts are correct, whether your sources are reliable, or whether we agree with your conclusions.
+
+    **The score reflects whether each function is built into your report — not a tally of mistakes.** Individual gaps, claims without a reference, blurred confidence, and self-contradictions are *highlighted for your next draft*, they don't chip away at the number.
 
     ---
 
     ### 📋 Core Evaluation Dimensions
 
-    Reports are evaluated across four fundamental tradecraft pillars:
+    Reports are evaluated across four functional pillars (0–25 each):
 
-    1. **Structure, Scope & Framing**
-       - Evaluates how effectively the report defines its operational context, boundaries, and primary judgements.
-       - Looks for a clear narrative flow that prioritises key risk insights before delving into supporting details.
+    1. **Framing, Scope & Coherence**
+       - Does the report frame the question it answers and whose decision it serves, and define what's in and out of scope?
+       - Does it lead with the core judgement and the requested decision, and read as one connected argument?
 
-    2. **Evidence & Sourcing Rigor**
-       - Evaluates whether factual claims (e.g. observed intrusions, statistics, vendor findings) are backed by traceable references.
-       - Looks for disciplined distinction between verified empirical data, external reporting, and analyst hypothesis.
+    2. **Source Attribution & Evidence**
+       - Are the report's material claims (intrusions, statistics, vendor findings, attributions) linked to a source the reader can go to — an inline link, a footnote, or a reference list?
+       - We check only that a reference **is attached** and that fact is kept separate from analyst inference — not whether the source is accurate or reliable.
 
-    3. **Analytic Tradecraft & Reasoning**
-       - Evaluates the discipline of analytical assertions, avoidance of unsupported hype, and clear distinction between likelihood and confidence.
-       - Looks for transparent discussion of collection limitations, assumptions, and intelligence gaps.
+    3. **Analytic Reasoning & Uncertainty**
+       - Is the path from evidence to judgement visible, not just asserted?
+       - Is uncertainty expressed in a calibrated, consistent scheme (ICD 203 terms, numeric bands, PHIA, or a house scale — all fine) with likelihood and confidence kept distinct, and assumptions and gaps surfaced?
 
-    4. **Executive Actionability & Business Impact**
-       - Evaluates how well technical findings are translated into operational, financial, or regulatory business implications.
-       - Looks for concrete, prioritised, and decision-ready recommendations that enable executive action.
+    4. **Executive Value & Actionability**
+       - Are technical findings translated into operational, financial, or regulatory implications leadership can weigh?
+       - Are recommendations prioritised, concrete, and decision-ready?
+
+    **Bonus signals** (lift a score, never lower it): a stated alternative explanation, honest treatment of your data's limits, named reassessment triggers.
 
     ---
 
