@@ -24,6 +24,26 @@ PILLAR_FIELDS = (
     "actionability",
 )
 
+# The functions a strong executive CTI report performs. Tier 1 runs a presence
+# check against exactly these; the labels are stable so the checklist reads the
+# same across submissions and can be shown to students as a structural prompt.
+# Each function names the pillar it primarily feeds.
+REPORT_FUNCTIONS = (
+    ("Frames the problem and defines scope", "clarity_of_scope"),
+    ("Leads with the core judgement and the decision requested", "clarity_of_scope"),
+    ("Links material claims to a source the reader can go to", "evidence_and_attribution"),
+    ("Separates sourced fact from analyst inference", "evidence_and_attribution"),
+    ("Shows the reasoning from evidence to judgement", "methodology"),
+    ("Handles uncertainty with a calibrated, consistent scheme", "methodology"),
+    ("Surfaces key assumptions and intelligence gaps", "methodology"),
+    ("Draws out what matters most and its business impact", "actionability"),
+    ("Gives the reader something to decide or do", "actionability"),
+)
+
+_FUNCTION_CHECKLIST_SPEC = "\n".join(
+    f'  {i}. "{label}"' for i, (label, _pillar) in enumerate(REPORT_FUNCTIONS, 1)
+)
+
 
 class EvaluationUnavailable(RuntimeError):
     """Raised when both evaluation tiers fail; the caller should not save anything."""
@@ -249,12 +269,14 @@ and gathering evidence the final evaluator can act on.
 
 ### LEVEL 1 OUTPUT (Level1Assessment JSON)
 - report_type / report_title: infer from the content.
-- structure_checklist: one entry per FUNCTION from the reference above - problem
-  framed / scope defined, judgement led with early, claims linked to sources,
-  reasoning shown, uncertainty handled with a calibrated scheme, what-matters drawn
-  out, action given. Do NOT require specific section names or a specific order; a
-  function performed under a different heading or woven through the prose is still
-  present. For each: present true/false and a short verbatim quote (or "not found").
+- structure_checklist: EXACTLY one entry for each of the following functions, in
+  this order, using the quoted text verbatim as the `element` value:
+{_FUNCTION_CHECKLIST_SPEC}
+  For each: `present` true/false, and `evidence` = a short verbatim quote locating
+  the function, or "not found". Do NOT require a specific section name, heading, or
+  order - a function performed under a different heading, or woven through the
+  prose, is still present. This checklist is a structural map for the student; it is
+  not itself a score.
 - clarity_of_scope, evidence_and_attribution, methodology, actionability: integer score
   0-25, an explanation, and caps_applied listing any STRUCTURAL cap you used.
 - estimative_language_quotes / vague_language_quotes / uncited_claim_quotes: up to ~8

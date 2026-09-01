@@ -23,11 +23,11 @@ class CriterionScore(BaseModel):
 # TIER 1 - Level 1 assessor (structure check + scoring + evidence gathering)
 # ==============================================================================
 class StructureCheckItem(BaseModel):
-    element: str = Field(..., description="Name of the expected report element.")
-    present: bool = Field(..., description="Whether the element is present in the submission.")
+    element: str = Field(..., description="Name of the report function being checked (verbatim from the canonical function list).")
+    present: bool = Field(..., description="Whether the report performs this function, in any structure or under any heading.")
     evidence: str = Field(
         default="",
-        description="Short verbatim quote locating the element, or a brief note when absent."
+        description="Short verbatim quote locating the function, or a brief note when absent."
     )
 
 
@@ -41,7 +41,7 @@ class Level1Assessment(BaseModel):
     )
     structure_checklist: List[StructureCheckItem] = Field(
         default_factory=list,
-        description="Presence check for each expected executive-report element."
+        description="Presence check for each function a strong executive report performs. A structural map for the student, not a score."
     )
     clarity_of_scope: CriterionScore
     evidence_and_attribution: CriterionScore

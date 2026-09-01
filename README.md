@@ -70,6 +70,8 @@ The evaluation does **not** enforce a template or a required set of section head
 
 There is **no letter grade and no pass/fail** — this platform is designed as an iterative learning tool. The 0–100 score makes progress visible across drafts. Gaps, uncited claims, and internal inconsistencies are surfaced as **highlights for the next draft**, not score deductions. Students improve their work by analyzing the per-pillar diagnostic feedback, identified gaps, and revision comparison notes.
 
+The scorecard also shows a **🧭 Function Check** — a structural map of which functions a strong executive report performs (frames the problem, leads with the judgement, links claims to sources, shows its reasoning, handles uncertainty, draws out what matters, gives the reader something to do) are present in the submission and which are missing. It is a prompt for the next draft, not a score.
+
 ---
 
 ## 🔒 Access Control & User Tracking

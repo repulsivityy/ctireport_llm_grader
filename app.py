@@ -551,6 +551,30 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
                     st.progress(item.score / 25.0)
                     st.write("")
 
+        # Function Check — structural map of what the report does / doesn't do
+        _stage = st.session_state.get("current_stage_result")
+        _l1 = getattr(_stage, "level_1_result", None) if _stage else None
+        if _l1 and _l1.structure_checklist:
+            st.write("---")
+            st.markdown("### 🧭 Function Check — what your report does")
+            st.caption(
+                "A structural map, not a score. Every strong executive report performs these "
+                "functions — in whatever structure or section order you choose. Missing ones are "
+                "the fastest place to strengthen your next draft."
+            )
+            fc_col1, fc_col2 = st.columns(2)
+            for fc_idx, fc_item in enumerate(_l1.structure_checklist):
+                mark = "✅" if fc_item.present else "⬜"
+                border = "#16A34A" if fc_item.present else "#CA8A04"
+                bg = "#F0FDF4" if fc_item.present else "#FEFCE8"
+                note = html.escape(fc_item.evidence or "") if not fc_item.present else ""
+                note_html = f'<div style="color:#713F12; font-size:0.82rem; margin-top:3px;">{note}</div>' if note and note.lower() != "not found" else ""
+                (fc_col1 if fc_idx % 2 == 0 else fc_col2).markdown(f"""
+                <div style="background:{bg}; border-left:3px solid {border}; padding:6px 10px; margin:4px 0; font-size:0.9rem; color:#1E293B;">
+                    {mark} {html.escape(fc_item.element)}{note_html}
+                </div>
+                """, unsafe_allow_html=True)
+
         # Side-by-Side Diagnostic: Gaps vs Socratic Questions
         st.write("---")
         diag_col1, diag_col2 = st.columns(2)
@@ -691,7 +715,7 @@ elif app_mode == "📊 Instructor Gradebook":
                 st.info(l1.overall_critique)
                 st.caption(f"Level 1 implied total: {l1.total_score}/100")
                 if l1.structure_checklist:
-                    st.markdown("**Structure checklist:**")
+                    st.markdown("**Function checklist:**")
                     for item in l1.structure_checklist:
                         mark = "✅" if item.present else "❌"
                         st.write(f"- {mark} **{item.element}** — {item.evidence or '—'}")
