@@ -32,3 +32,9 @@ ehthumbs.db
 Thumbs.db
 .vscode/
 .idea/
+
+# Local Evaluation Harness & Benchmarks
+eval_variance.py
+eval_*.py
+sample_reports/sample_weak_report.md
+sample_reports/sample_mid_report.md

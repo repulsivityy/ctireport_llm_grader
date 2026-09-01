@@ -24,6 +24,9 @@ venv/
 *.key
 *.pem
 submissions.db
+.streamlit/
+secrets.toml
+*.toml
 
 # Teaching material / dev tooling - not shipped in the image
 sample_reports/

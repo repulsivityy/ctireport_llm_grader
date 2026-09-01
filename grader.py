@@ -197,7 +197,10 @@ report that otherwise performs the function are highlighted, never penalised.
      An inline link, a footnote, or a numbered reference resolved somewhere all
      count. The question is simply whether a reference / evidence is attached.
    - References are specific enough to locate (a named outlet / vendor / advisory or
-     a URL), not "sources say" or "per open reporting".
+     a URL). Naming a specific publisher (e.g. "per CISA advisory", "a Mandiant report")
+     without a followable link or footnote is half-built (14-19). Vague phrases with no
+     named source at all ("sources say", "industry news", "per advisories") trigger the
+     structural cap below (max 6).
    - Analyst inference is visibly distinguishable from sourced fact.
    - You are NOT checking whether a cited source is accurate, reliable, or actually
      supports the claim - only that evidence / a reference is cited at all, and that
@@ -238,7 +241,9 @@ report that otherwise performs the function are highlighted, never penalised.
      (operational, financial, regulatory/legal, reputational) in some honest form.
    - Recommendations / requested decisions are prioritised, concrete, and
      decision-ready, with enough specificity to act on. Reward a named owner or a
-     timeframe where present; do not penalise their absence.
+     timeframe where present; do not penalise their absence. Passive gestures telling
+     leadership to "be aware", "consider whether defences are sufficient", or "stay vigilant"
+     are half-built (14-19), not deliberate executive actionability.
    - CAP (structural): raw technical write-up with no executive framing, OR
      recommendations absent or purely generic ("stay vigilant", "train staff",
      "patch everything") => max 10.
@@ -250,16 +255,12 @@ report that otherwise performs the function are highlighted, never penalised.
 - Named reassessment triggers or indicators to watch.
 
 ### BANDING - how completely the function is built into the report
-Judge the function as a whole. Do NOT subtract a band per slip, per uncited claim,
-or per inconsistency - those are highlights, not deductions.
-- 21-25: the function is a deliberate, well-constructed part of the report. Isolated
-  gaps or inconsistencies may exist; note them, do not band down for them.
-- 14-20: the function is only half-built - the author starts it but does not carry
-  it through (scope is asserted but never actually bounded; uncertainty is calibrated
-  in the summary but the body reverts to bare assertion; recommendations are listed
-  but not shaped into anything a decision-maker can act on).
-- 7-13: the function is gestured at but not really constructed.
-- 0-6: absent or token.
+Judge the function as a whole. Do NOT subtract a band per minor slip, but do NOT award top marks to incomplete drafts.
+- 24-25 (Executive / Publish-Ready): The function is executed to professional standard. A seasoned intelligence manager would sign off and forward this directly to the Board/Risk Committee with no material revisions.
+- 20-23 (Solid Executive Draft): The function is deliberate and well-structured, but a senior reviewer still has 1-2 specific refinements before executive publication.
+- 14-19 (Developing / Half-Built): The function is started but not decision-ready (e.g. recommendations are passive or unprioritized like "management should be aware"; attribution relies on vague phrases like "per advisories"; confidence is unstated or conflated with likelihood). A mentor would send this draft back for a revision pass.
+- 7-13 (Gestured At): Superficial placeholder or bare gesture without analytical substance.
+- 0-6 (Absent or Token): Structural omission or failure (applies structural caps).
 """
 
 # ------------------------------------------------------------------------------
@@ -383,6 +384,9 @@ scale) than the reference, as long as the functions are performed.
   tip the assessment between them"; "the business-impact table is solid - rank the rows
   so leadership sees which consequence to weigh first". If the report is still missing
   core functions, keep this short or empty and let gaps_and_missing_elements carry the load.
+  ALIGNMENT NOTE: A pillar scored 24-25 is executive publish-ready. If you identify material
+  refinements to strengthen a pillar's tradecraft, score that pillar in the 20-23 band
+  instead of awarding a flat 25. If all pillars are 24-25, keep how_to_level_up minimal or empty.
 - internal_inconsistencies: verbatim snippets where the report contradicts itself.
   Feedback for the author - NOT a scoring input; do not lower any pillar for these.
 - questions_for_author: EXACTLY three DEVELOPMENTAL questions - the kind a mentor asks to
@@ -410,7 +414,7 @@ class CTIGrader:
         
         self.primary_model = (primary_model or os.getenv("PRIMARY_MODEL", "gemini-3.5-flash-lite")).strip()
         self.final_model = (final_model or os.getenv("META_MODEL", "gemini-3.7-flash")).strip()
-        self.client = genai.Client(api_key=self.api_key)
+        self.client = genai.Client(api_key=self.api_key, vertexai=False)
 
     # ------------------------------------------------------------------ helpers
     @staticmethod
@@ -445,6 +449,7 @@ class CTIGrader:
                         response_mime_type="application/json",
                         response_schema=schema,
                         temperature=0.2,
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                     ),
                 )
                 return self._load_json(response.text, label)
