@@ -373,11 +373,24 @@ scale) than the reference, as long as the functions are performed.
 - integrity (above).
 - clarity_of_scope, evidence_and_attribution, methodology, actionability: your own
   integer score 0-25, explanation, and caps_applied (structural caps only).
-- gaps_and_missing_elements: concrete structural / framing / source-attribution /
-  reasoning fixes only.
+- gaps_and_missing_elements: concrete fixes for functions that are ABSENT or half-built
+  (structural / framing / source-attribution / reasoning). What the report still needs.
+- how_to_level_up: 1-3 specific pushes that take an ALREADY-SOUND report further - build
+  on what the author did well, toward bigger / better / more structured thinking. These
+  are NOT gap fixes. Examples: "you flag the payment-switch visibility gap but never tie
+  it to the confidence level - connect them so the reader sees why confidence is only
+  moderate"; "your outlook is a single scenario - add the alternative and name what would
+  tip the assessment between them"; "the business-impact table is solid - rank the rows
+  so leadership sees which consequence to weigh first". If the report is still missing
+  core functions, keep this short or empty and let gaps_and_missing_elements carry the load.
 - internal_inconsistencies: verbatim snippets where the report contradicts itself.
   Feedback for the author - NOT a scoring input; do not lower any pillar for these.
-- questions_for_author: EXACTLY three, developmental in nature.
+- questions_for_author: EXACTLY three DEVELOPMENTAL questions - the kind a mentor asks to
+  stretch an analyst's thinking, not to point out a gap. Aim at: the reasoning behind a
+  judgement ("what evidence would have changed this call?"), the wider implications ("who
+  else in the business needs this, and what would they do with it?"), or the author's own
+  conviction ("which single finding would you stake the recommendation on?"). No yes/no
+  questions; do not restate a gap as a question.
 - overall_critique, report_type, report_title.
 Do not compute the total - the platform sums the four pillar scores.
 """
@@ -672,7 +685,7 @@ the function checklist, score the four pillars, and pull the requested evidence 
 ### LANGUAGE HANDLING & NON-ENGLISH REPORTS
 - The report is written in {target_lang}. Apply the rubric equally regardless of the submission language.
 - For non-English reports, recognize standard translated equivalents of ICD 203 estimative probability and confidence expressions in {target_lang}. Do NOT penalize or cap methodology simply because the author used native/translated terms rather than English words.
-- Ensure all your qualitative feedback (`overall_critique`, `gaps_and_missing_elements`, `questions_for_author`, `progress_note`, and pillar explanations) is written in {out_lang}.
+- Ensure all your qualitative feedback (`overall_critique`, `gaps_and_missing_elements`, `how_to_level_up`, `questions_for_author`, `progress_note`, and pillar explanations) is written in {out_lang}.
 - Any extracted verbatim quotes or citations MUST remain in the original language as written.
 """
         parts = [
@@ -786,6 +799,7 @@ the function checklist, score the four pillars, and pull the requested evidence 
             total_score=total,
             percentage_score=float(total),
             gaps_and_missing_elements=list(adj.gaps_and_missing_elements),
+            how_to_level_up=list(adj.how_to_level_up),
             internal_inconsistencies=list(adj.internal_inconsistencies),
             questions_for_author=list(adj.questions_for_author),
             overall_critique=adj.overall_critique,
