@@ -401,15 +401,22 @@ class CTIGrader:
         self,
         api_key: Optional[str] = None,
         primary_model: Optional[str] = None,
-        final_model: Optional[str] = None
+        final_model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        attempts_per_call: int = 2,
     ):
         raw_key = api_key or os.getenv("GEMINI_API_KEY", "") or os.getenv("GEMINI_APIKEY", "")
         self.api_key = raw_key.strip()
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not set. Please configure it in your environment or Secret Manager.")
-        
+
         self.primary_model = (primary_model or os.getenv("PRIMARY_MODEL", "gemini-3.5-flash-lite")).strip()
         self.final_model = (final_model or os.getenv("META_MODEL", "gemini-3.7-flash")).strip()
+        self.temperature = (
+            temperature if temperature is not None
+            else float(os.getenv("GRADER_TEMPERATURE", "0.2"))
+        )
+        self.attempts_per_call = max(1, attempts_per_call)
         self.client = genai.Client(api_key=self.api_key)
 
     # ------------------------------------------------------------------ helpers
@@ -433,9 +440,9 @@ class CTIGrader:
         return data
 
     def _generate_dict(self, *, model: str, system_instruction: str, prompt: str, schema, label: str) -> dict:
-        """One call + one retry. Raises on final failure (callers decide how to degrade)."""
+        """One call + retries (self.attempts_per_call). Raises on final failure (callers decide how to degrade)."""
         last_err: Optional[Exception] = None
-        for _ in range(2):
+        for _ in range(self.attempts_per_call):
             try:
                 response = self.client.models.generate_content(
                     model=model,
@@ -444,7 +451,7 @@ class CTIGrader:
                         system_instruction=system_instruction,
                         response_mime_type="application/json",
                         response_schema=schema,
-                        temperature=0.2,
+                        temperature=self.temperature,
                     ),
                 )
                 return self._load_json(response.text, label)

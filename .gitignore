@@ -22,6 +22,9 @@ venv/
 env/
 ENV/
 
+# Eval run outputs
+eval/results/
+
 # IDE & OS Specific
 .DS_Store
 .DS_Store?
