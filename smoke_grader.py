@@ -133,6 +133,7 @@ def main() -> int:
             "integrity_severity": res.integrity.severity if res.integrity else None,
             "evaluation_note": r.evaluation_note,
             "gaps": r.gaps_and_missing_elements,
+            "internal_inconsistencies": r.internal_inconsistencies,
             "questions": r.questions_for_author,
         })
         if r.evaluation_note:
