@@ -68,9 +68,14 @@ The evaluation does **not** enforce a template or a required set of section head
 
 ### 🎯 Reading the Feedback
 
-There is **no letter grade and no pass/fail** — this platform is designed as an iterative learning tool. The 0–100 score makes progress visible across drafts. Gaps, uncited claims, and internal inconsistencies are surfaced as **highlights for the next draft**, not score deductions. Students improve their work by analyzing the per-pillar diagnostic feedback, identified gaps, and revision comparison notes.
+There is **no letter grade and no pass/fail** — this platform is designed as an iterative learning tool. The 0–100 score makes progress visible across drafts. Gaps, uncited claims, and internal inconsistencies are surfaced as **highlights for the next draft**, not score deductions.
 
-The scorecard also shows a **🧭 Function Check** — a structural map of which functions a strong executive report performs (frames the problem, leads with the judgement, links claims to sources, shows its reasoning, handles uncertainty, draws out what matters, gives the reader something to do) are present in the submission and which are missing. It is a prompt for the next draft, not a score.
+The scorecard's feedback is split by intent:
+
+- **⚠️ Key Areas for Refinement** — functions that are absent or half-built. What the report still needs.
+- **🚀 How to Level Up** — 1–3 pushes that take an already-sound report *further* (build on strengths, think bigger). Not gap fixes; only shown when the report is structurally solid.
+- **❓ Questions to Push Your Thinking** — three developmental questions a mentor would ask to stretch the analysis, not to point out gaps.
+- **🧭 Function Check** — a first-pass structural map of which functions a strong executive report performs (frames the problem, leads with the judgement, links claims to sources, shows its reasoning, handles uncertainty, draws out what matters, gives the reader something to do) are present and which are missing.
 
 ---
 

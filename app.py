@@ -608,7 +608,7 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
                     """, unsafe_allow_html=True)
 
         with diag_col2:
-            st.markdown("#### ❓ Socratic Questions for the Author")
+            st.markdown("#### ❓ Questions to Push Your Thinking")
             if res.questions_for_author:
                 for i, q in enumerate(res.questions_for_author, 1):
                     st.markdown(f"""
@@ -618,6 +618,17 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
                     """, unsafe_allow_html=True)
             elif _single_pass:
                 st.caption("Not generated on a single-pass review — resubmit for the full evaluation.")
+
+        if getattr(res, "how_to_level_up", None):
+            st.write("")
+            st.markdown("#### 🚀 How to Level Up")
+            st.caption("Your report already performs the core functions — these push it further. Not gaps to fix.")
+            for tip in res.how_to_level_up:
+                st.markdown(f"""
+                <div style="background: #ECFDF5; border-left: 3px solid #059669; padding: 8px 12px; margin: 5px 0; font-size: 0.92rem; color: #064E3B;">
+                    {html.escape(str(tip))}
+                </div>
+                """, unsafe_allow_html=True)
 
 
 # ==============================================================================
@@ -716,6 +727,10 @@ elif app_mode == "📊 Instructor Gradebook":
                     st.markdown("**Gaps & missing elements:**")
                     for g in gr.gaps_and_missing_elements:
                         st.write(f"- {g}")
+                if getattr(gr, "how_to_level_up", None):
+                    st.markdown("**How to level up (shown to student):**")
+                    for tip in gr.how_to_level_up:
+                        st.write(f"- {tip}")
                 if getattr(gr, "internal_inconsistencies", None):
                     st.markdown("**Internal inconsistencies (highlighted, not scored):**")
                     for inc in gr.internal_inconsistencies:

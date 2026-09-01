@@ -97,13 +97,25 @@ class FinalAdjudication(BaseModel):
     evidence_and_attribution: CriterionScore
     methodology: CriterionScore
     actionability: CriterionScore
-    gaps_and_missing_elements: List[str] = Field(default_factory=list)
+    gaps_and_missing_elements: List[str] = Field(
+        default_factory=list,
+        description="Concrete fixes for functions that are absent or half-built - what the report still needs."
+    )
+    how_to_level_up: List[str] = Field(
+        default_factory=list,
+        description="1-3 pushes that take an already-sound report further, building on its strengths toward "
+        "bigger / better / more structured thinking. Not gap fixes. May be empty when the report still "
+        "has core functions missing."
+    )
     internal_inconsistencies: List[str] = Field(
         default_factory=list,
         description="Verbatim snippets where the report contradicts itself. Highlighted for the "
         "author; NOT a scoring input."
     )
-    questions_for_author: List[str] = Field(default_factory=list)
+    questions_for_author: List[str] = Field(
+        default_factory=list,
+        description="Exactly three developmental questions that stretch the analyst's thinking (not gap-spotting)."
+    )
     overall_critique: str
     progress_note: Optional[str] = Field(
         default=None,
@@ -132,13 +144,17 @@ class GradingResult(BaseModel):
         default_factory=list,
         description="Specific structural gaps, missing functions, claims not linked to a source, or absent calibrated uncertainty language. Highlighted for revision, not a per-item score penalty; not a judgement of factual accuracy."
     )
+    how_to_level_up: List[str] = Field(
+        default_factory=list,
+        description="Shown to the student: 1-3 pushes that take an already-sound report further (build on strengths, think bigger / better / more structured). Not gap fixes; may be empty."
+    )
     internal_inconsistencies: List[str] = Field(
         default_factory=list,
         description="Verbatim snippets where the report contradicts itself. Highlighted for the author; not a scoring input."
     )
     questions_for_author: List[str] = Field(
         default_factory=list,
-        description="Exactly three probing questions to ask the report's author."
+        description="Exactly three developmental questions that stretch the analyst's thinking (not gap-spotting)."
     )
     overall_critique: str = Field(..., description="Senior analyst overall critique and evaluation summary.")
     integrity_notice: Optional[str] = Field(
