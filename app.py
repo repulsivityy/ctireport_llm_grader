@@ -30,7 +30,7 @@ st.markdown("""
     .main-title {
         font-size: 2.2rem;
         font-weight: 700;
-        color: #1E293B;
+        color: var(--text-color, #1E293B);
         margin-bottom: 0.2rem;
     }
     .sub-title {
@@ -60,8 +60,8 @@ st.markdown("""
         margin-bottom: 1.5rem;
     }
     .feature-card {
-        background: #F8FAFC;
-        border: 1px solid #E2E8F0;
+        background: var(--secondary-background-color, #F8FAFC);
+        border: 1px solid rgba(148, 163, 184, 0.25);
         border-radius: 10px;
         padding: 1.2rem;
         height: 100%;
@@ -69,7 +69,7 @@ st.markdown("""
     .feature-title {
         font-size: 1.1rem;
         font-weight: 700;
-        color: #0F172A;
+        color: var(--text-color, #0F172A);
         margin-bottom: 0.5rem;
     }
     .score-card {
@@ -88,30 +88,48 @@ st.markdown("""
         line-height: 1;
     }
     .rubric-box {
-        background-color: #F8FAFC;
-        border: 1px solid #E2E8F0;
+        background-color: var(--secondary-background-color, #F8FAFC);
+        border: 1px solid rgba(148, 163, 184, 0.3);
         border-radius: 10px;
         padding: 1.2rem;
         margin-bottom: 1rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
     }
     .metric-title {
         font-size: 1.05rem;
         font-weight: 600;
-        color: #0F172A;
+        color: var(--text-color, #0F172A);
+    }
+    .rubric-explanation {
+        color: var(--text-color, #334155);
+        font-size: 0.92rem;
+        line-height: 1.5;
+        margin: 0.4rem 0 0.6rem 0;
+        opacity: 0.92;
+    }
+    .rubric-badge {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #0284C7;
+        background: rgba(2, 132, 199, 0.12);
+        padding: 2px 8px;
+        border-radius: 6px;
     }
     .author-question-box {
-        background-color: #EFF6FF;
+        background-color: rgba(59, 130, 246, 0.08);
         border-left: 4px solid #3B82F6;
         padding: 1rem;
         border-radius: 6px;
         margin-bottom: 0.75rem;
+        color: var(--text-color, #1E293B);
     }
     .history-card {
-        background-color: #F1F5F9;
-        border: 1px solid #CBD5E1;
+        background-color: var(--secondary-background-color, #F1F5F9);
+        border: 1px solid rgba(148, 163, 184, 0.25);
         border-radius: 8px;
         padding: 0.8rem 1rem;
         margin-bottom: 0.5rem;
+        color: var(--text-color, #1E293B);
     }
     .delta-badge-pos {
         color: #16A34A;
@@ -131,6 +149,115 @@ st.markdown("""
         max-height: 450px;
         overflow-y: auto;
         white-space: pre-wrap;
+    }
+    .attempt-badge {
+        background: var(--secondary-background-color, #E2E8F0);
+        padding: 4px 12px;
+        border-radius: 9999px;
+        font-weight: 600;
+        color: var(--text-color, #1E293B);
+        font-size: 0.9rem;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    .progression-box {
+        background: var(--secondary-background-color, #F8FAFC);
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        border-radius: 8px;
+        padding: 0.8rem 1.2rem;
+        margin-bottom: 1.2rem;
+        color: var(--text-color, #1E293B);
+    }
+    .fc-box {
+        padding: 6px 10px;
+        margin: 4px 0;
+        font-size: 0.9rem;
+        border-radius: 4px;
+        color: var(--text-color, #1E293B);
+    }
+    .fc-present {
+        background: rgba(22, 163, 74, 0.1);
+        border-left: 3px solid #16A34A;
+    }
+    .fc-missing {
+        background: rgba(202, 138, 4, 0.1);
+        border-left: 3px solid #CA8A04;
+    }
+    .inconsistency-box {
+        background: rgba(202, 138, 4, 0.12);
+        border-left: 3px solid #CA8A04;
+        padding: 6px 10px;
+        margin: 4px 0;
+        font-size: 0.9rem;
+        border-radius: 4px;
+        color: var(--text-color, #713F12);
+    }
+    .level-up-box {
+        background: rgba(16, 185, 129, 0.12);
+        border-left: 3px solid #059669;
+        padding: 8px 12px;
+        margin: 5px 0;
+        font-size: 0.92rem;
+        border-radius: 4px;
+        color: var(--text-color, #064E3B);
+    }
+
+    /* Dark mode overrides (OS preferred or Streamlit dark mode) */
+    @media (prefers-color-scheme: dark) {
+        .main-title { color: #F8FAFC !important; }
+        .sub-title { color: #94A3B8 !important; }
+        .feature-card { background: #1E293B !important; border-color: #334155 !important; }
+        .feature-title { color: #F8FAFC !important; }
+        .rubric-box {
+            background-color: #1E293B !important;
+            border-color: #334155 !important;
+        }
+        .metric-title {
+            color: #F8FAFC !important;
+        }
+        .rubric-explanation {
+            color: #CBD5E1 !important;
+        }
+        .rubric-badge {
+            color: #38BDF8 !important;
+            background: rgba(56, 189, 248, 0.2) !important;
+        }
+        .history-card {
+            background-color: #1E293B !important;
+            border-color: #334155 !important;
+            color: #E2E8F0 !important;
+        }
+        .author-question-box {
+            background-color: rgba(30, 58, 138, 0.3) !important;
+            border-left-color: #3B82F6 !important;
+            color: #E2E8F0 !important;
+        }
+        .attempt-badge {
+            background: #1E293B !important;
+            color: #F8FAFC !important;
+            border-color: #334155 !important;
+        }
+        .progression-box {
+            background: #1E293B !important;
+            border-color: #334155 !important;
+            color: #E2E8F0 !important;
+        }
+        .fc-box {
+            color: #F8FAFC !important;
+        }
+        .fc-present {
+            background: rgba(22, 163, 74, 0.2) !important;
+        }
+        .fc-missing {
+            background: rgba(202, 138, 4, 0.2) !important;
+        }
+        .inconsistency-box {
+            color: #FEF08A !important;
+            background: rgba(202, 138, 4, 0.2) !important;
+        }
+        .level-up-box {
+            color: #A7F3D0 !important;
+            background: rgba(16, 185, 129, 0.2) !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -478,7 +605,7 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
         st.markdown(f"""
         <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; margin-bottom: 0.5rem;">
             <div class="main-title" style="font-size: 1.8rem;">📊 Assessment Scorecard: {html.escape(res.student_name)}</div>
-            <div style="background: #E2E8F0; padding: 4px 12px; border-radius: 9999px; font-weight: 600; color: #1E293B; font-size: 0.9rem;">
+            <div class="attempt-badge">
                 Attempt #{st.session_state.current_attempt}
             </div>
         </div>
@@ -496,12 +623,12 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
             
             with st.container():
                 st.markdown(f"""
-                <div style="background: #F8FAFC; border: 1px solid #CBD5E1; border-left: 4px solid {'#16A34A' if diff_total >= 0 else '#DC2626'}; border-radius: 8px; padding: 0.8rem 1.2rem; margin-bottom: 1.2rem;">
+                <div class="progression-box" style="border-left: 4px solid {'#16A34A' if diff_total >= 0 else '#DC2626'};">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-weight: 600; color: #1E293B;">Progression vs Attempt #{prev.attempt_number}:</span>
+                        <span style="font-weight: 600;">Progression vs Attempt #{prev.attempt_number}:</span>
                         <span class="{delta_cls}" style="font-size: 1.1rem;">{arrow} {diff_str} pts ({prev.total_score}/100 ➔ <strong>{res.total_score}/100</strong>)</span>
                     </div>
-                    {f'<div style="color: #475569; font-size: 0.95rem; margin-top: 0.4rem;"><strong>What evolved:</strong> {html.escape(res.progress_note)}</div>' if res.progress_note else ''}
+                    {f'<div style="font-size: 0.95rem; margin-top: 0.4rem; opacity: 0.85;"><strong>What evolved:</strong> {html.escape(res.progress_note)}</div>' if res.progress_note else ''}
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -545,9 +672,9 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
                     <div class="rubric-box" style="margin-bottom: 0.8rem;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
                             <span class="metric-title">{html.escape(title)}</span>
-                            <span style="font-size: 1.15rem; font-weight: 700; color: #0284C7; background: #E0F2FE; padding: 2px 8px; border-radius: 6px;">{item.score} / 25</span>
+                            <span class="rubric-badge">{item.score} / 25</span>
                         </div>
-                        <p style="color: #334155; font-size: 0.92rem; line-height: 1.5; margin: 0.4rem 0 0.6rem 0;">{html.escape(item.explanation)}</p>
+                        <p class="rubric-explanation">{html.escape(item.explanation)}</p>
                     </div>
                     """, unsafe_allow_html=True)
                     st.progress(item.score / 25.0)
@@ -568,12 +695,11 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
             fc_col1, fc_col2 = st.columns(2)
             for fc_idx, fc_item in enumerate(_l1.structure_checklist):
                 mark = "✅" if fc_item.present else "⬜"
-                border = "#16A34A" if fc_item.present else "#CA8A04"
-                bg = "#F0FDF4" if fc_item.present else "#FEFCE8"
+                fc_cls = "fc-present" if fc_item.present else "fc-missing"
                 note = html.escape(fc_item.evidence or "") if not fc_item.present else ""
-                note_html = f'<div style="color:#713F12; font-size:0.82rem; margin-top:3px;">{note}</div>' if note and note.lower() != "not found" else ""
+                note_html = f'<div style="font-size:0.82rem; margin-top:3px; opacity:0.85;">{note}</div>' if note and note.lower() != "not found" else ""
                 (fc_col1 if fc_idx % 2 == 0 else fc_col2).markdown(f"""
-                <div style="background:{bg}; border-left:3px solid {border}; padding:6px 10px; margin:4px 0; font-size:0.9rem; color:#1E293B;">
+                <div class="fc-box {fc_cls}">
                     {mark} {html.escape(fc_item.element)}{note_html}
                 </div>
                 """, unsafe_allow_html=True)
@@ -602,7 +728,7 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
                 st.markdown("**🔀 Internal inconsistencies to reconcile** _(highlighted for revision, not scored)_")
                 for inc in res.internal_inconsistencies:
                     st.markdown(f"""
-                    <div style="background: #FEF9C3; border-left: 3px solid #CA8A04; padding: 6px 10px; margin: 4px 0; font-size: 0.9rem; color: #713F12;">
+                    <div class="inconsistency-box">
                         {html.escape(str(inc))}
                     </div>
                     """, unsafe_allow_html=True)
@@ -625,7 +751,7 @@ elif is_logged_in and app_mode == "📝 Submit & Grade Report":
             st.caption("Your report already performs the core functions — these push it further. Not gaps to fix.")
             for tip in res.how_to_level_up:
                 st.markdown(f"""
-                <div style="background: #ECFDF5; border-left: 3px solid #059669; padding: 8px 12px; margin: 5px 0; font-size: 0.92rem; color: #064E3B;">
+                <div class="level-up-box">
                     {html.escape(str(tip))}
                 </div>
                 """, unsafe_allow_html=True)
